@@ -1,0 +1,15 @@
+Oars and Sails v1.0.77 - source code (GPL-3.0-or-later, see LICENSE)
+
+This is the complete source of OarsAndSails.dll in this release.
+
+Libraries (git submodules, see .gitmodules; not copied here, get them from their public repositories):
+  lib/commonlibsse-ng  https://github.com/alandtse/CommonLibVR.git  branch ng, commit 4ed481641f65e5b9a35376b90af85847e8870029
+                       (CommonLibSSE-NG 12.1.0, GPL-3.0-or-later WITH Modding Exception AND GPL-3.0 Linking Exception)
+  lib/vcpkg            https://github.com/microsoft/vcpkg.git
+  vcpkg packages (vcpkg.json): spdlog, fmt, directxtk, rapidcsv
+
+Build (Windows, Visual Studio 2022 with C++ and CMake):
+  1. Put these files in a folder, then:  git init && git submodule add https://github.com/alandtse/CommonLibVR.git lib/commonlibsse-ng
+     (check out the commit above inside lib/commonlibsse-ng) and add lib/vcpkg the same way, or clone them by hand.
+  2. From a Developer Command Prompt:  cmake --preset release-windows   then   cmake --build --preset release-windows
+  3. The plugin is build/msvc/OarsAndSails.dll -> Data/SKSE/Plugins/
