@@ -3662,6 +3662,38 @@ namespace
 		// boat away from the camera. The mouse turns it freely afterwards. [Camera] FaceRower=0 turns it off.
 		bool faceRowerPending_{ false };
 		bool faceRowerOn_{ true };
+
+		// 56.46: first person stays seated (no stand-up, no sneak crouch that followers copy). The game limits the look
+		// while its sit state is set, so that state is cleared while the view is first person and put back when it leaves.
+		// The seated animation itself is never touched, so switching views no longer stands anyone up. [Camera] FirstPersonFreeLook
+		bool fpSitMasked_{ false };
+		RE::SIT_SLEEP_STATE fpSitSaved_{ RE::SIT_SLEEP_STATE::kNormal };  // set from the real state before any restore
+		int fpFreeLook_{ -1 };
+
+		void MaskSeatForFreeLook(RE::PlayerCharacter* a_player, bool a_on)
+		{
+			if (!a_player) return;
+			auto* st = a_player->AsActorState();
+			if (!st) return;
+			if (a_on) {
+				if (fpFreeLook_ < 0) fpFreeLook_ = GetPrivateProfileIntA("Camera", "FirstPersonFreeLook", 1, FlowIniPath().c_str()) != 0 ? 1 : 0;
+				if (!fpFreeLook_ || !playerSit_ || sitFailed_) return;
+				const auto cur = st->actorState1.sitSleepState;
+				if (cur == RE::SIT_SLEEP_STATE::kNormal) return;
+				if (!fpSitMasked_) {
+					fpSitSaved_ = cur;
+					logger::info("First person: seated, sit state {} cleared so the view can look around freely", static_cast<int>(cur));
+				}
+				fpSitMasked_ = true;
+				st->actorState1.sitSleepState = RE::SIT_SLEEP_STATE::kNormal;
+			} else if (fpSitMasked_) {
+				fpSitMasked_ = false;
+				bool sitting = false;
+				a_player->GetGraphVariableBool("bIsSitting", sitting);
+				if (sitting && st->actorState1.sitSleepState == RE::SIT_SLEEP_STATE::kNormal) st->actorState1.sitSleepState = fpSitSaved_;
+				logger::info("First person left: sit state put back ({})", sitting ? static_cast<int>(fpSitSaved_) : 0);
+			}
+		}
 		bool faceRowerLoaded_{ false };
 		void FaceRowerCamera(RE::PlayerCamera* a_cam)
 		{
@@ -3697,6 +3729,7 @@ namespace
 			}
 			wasFirstPerson_ = firstPerson;
 			SetPlayerBodyHidden(a_player, firstPerson);
+			MaskSeatForFreeLook(a_player, firstPerson);
 			if (firstPerson) {
 				if (lockSeatedFacing_) a_player->SetGraphVariableBool("bAllowRotation", true);  // first person look turns the actor
 				return;
@@ -7150,31 +7183,16 @@ namespace
 			crouchTimer_ = 0.0f;
 			auto* camNow = RE::PlayerCamera::GetSingleton();
 			const bool firstPersonNow = camNow && camNow->IsInFirstPerson();
-			if (firstPersonNow && playerSit_ && !sitFailed_) {
-				// The game restricts how far you can look around while seated, which made the first person view feel locked.
-				// In first person the body is hidden anyway, so stand up from the seat and use the free-look crouch instead.
-				const auto* st0 = player->AsActorState();
-				const bool seated = sitAccepted_ || (st0 && st0->actorState1.sitSleepState != RE::SIT_SLEEP_STATE::kNormal);
-				if (seated) {
-					for (const char* ev : { "IdleChairExitStart", "IdleFurnitureExit", "IdleForceDefaultState", "IdleStop" }) player->NotifyAnimationGraph(ev);
-					if (auto* st = player->AsActorState()) st->actorState1.sitSleepState = RE::SIT_SLEEP_STATE::kNormal;
-					player->SetGraphVariableBool("bIsSitting", false);
-					player->SetGraphVariableBool("isIdleSitting", false);
-					sitAccepted_ = false;
-					sitTries_ = 0;
-					sitMiss_ = 0;
-					logger::info("First person: left the seat so the view can look around freely, crouching instead");
-					return;
-				}
-			}
-			if (playerSit_ && !sitFailed_ && !firstPersonNow) {
+			// 56.46: first person stays seated too (MaskSeatForFreeLook frees the look), so both views share the seat logic below.
+			(void)firstPersonNow;
+			if (playerSit_ && !sitFailed_) {
 				// Seated pose. The game accepts the sit event once, from a standing pose; any later send is
 				// rejected because he is already seated, so never treat a rejection as a failure after an accept.
 				bool sitting = false;
 				player->GetGraphVariableBool("bIsSitting", sitting);
 				// The graph variable lags the engine's own sit state for a moment after the sit event, so trust either.
 				const auto* seatState = player->AsActorState();
-				const bool stateSitting = seatState && seatState->actorState1.sitSleepState != RE::SIT_SLEEP_STATE::kNormal;
+				const bool stateSitting = (seatState && seatState->actorState1.sitSleepState != RE::SIT_SLEEP_STATE::kNormal) || (fpSitMasked_ && sitting);
 				if (sitting || stateSitting) { sitMiss_ = 0; return; }
 				if (sitAccepted_) {
 					// The game accepted the sit but we are standing: something dropped the seat. Sit again.
@@ -8358,6 +8376,7 @@ namespace
 					}
 					player->SetGraphVariableBool("bOffsetGPMA", false);
 				}
+				MaskSeatForFreeLook(player, false);  // 56.46: the get-up needs the real sit state
 				const bool exitSeated = playerSit_ && sitAccepted_;
 				logger::info("Exit: state was {}", exitSeated ? "seated" : "crouch-fp or rowing");
 				if (exitSeated) {
