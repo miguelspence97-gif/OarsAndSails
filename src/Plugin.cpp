@@ -3656,6 +3656,27 @@ namespace
 		// The player's third person body rides locked in the boat: it sits at the tuned seat and always
 		// faces along the boat (plus a numpad turn), whatever way the camera looks. Only the body's
 		// skeleton is moved, so the actor, first person view and third person camera stay free.
+		// 56.45: the rower sits facing the stern, so the game's camera (behind the player) looked at his back and W rowed
+		// the boat toward the camera. On boarding as the rower, and each time the view goes from first to third person on
+		// the rowing seat, the third person camera is swung round once to face him (freeRotation.x = pi): W then moves the
+		// boat away from the camera. The mouse turns it freely afterwards. [Camera] FaceRower=0 turns it off.
+		bool faceRowerPending_{ false };
+		bool faceRowerOn_{ true };
+		bool faceRowerLoaded_{ false };
+		void FaceRowerCamera(RE::PlayerCamera* a_cam)
+		{
+			if (!faceRowerLoaded_) {
+				faceRowerLoaded_ = true;
+				faceRowerOn_ = GetPrivateProfileIntA("Camera", "FaceRower", 1, FlowIniPath().c_str()) != 0;
+			}
+			if (!faceRowerOn_ || !a_cam || !a_cam->currentState || a_cam->currentState->id != RE::CameraState::kThirdPerson) { faceRowerPending_ = faceRowerOn_ && faceRowerPending_; return; }
+			auto* tps = static_cast<RE::ThirdPersonState*>(a_cam->currentState.get());
+			tps->freeRotationEnabled = true;
+			tps->freeRotation.x = 3.14159265f;
+			faceRowerPending_ = false;
+			logger::info("Camera: third person turned to face the rower (W rows away from the camera)");
+		}
+
 		void ApplyPlayerBody(RE::PlayerCharacter* a_player)
 		{
 			if (!a_player) return;
@@ -3665,6 +3686,8 @@ namespace
 			for (const char* v : { "Speed", "SpeedSampled", "SpeedDesired", "Direction", "TurnDelta" }) a_player->SetGraphVariableFloat(v, 0.0f);
 			auto* cam = RE::PlayerCamera::GetSingleton();
 			const bool firstPerson = cam && cam->IsInFirstPerson();
+			if (!firstPerson && wasFirstPerson_ && playerOnRowSeat_) faceRowerPending_ = true;  // 56.45: into third person on the rowing seat
+			if (!firstPerson && faceRowerPending_) FaceRowerCamera(cam);
 			if (firstPerson && !wasFirstPerson_) {
 				// Coming back to first person: look the way the seat faces (the rowing seat looks at the stern, like a rower).
 				RE::NiPoint3 ang = a_player->GetAngle();
@@ -5852,7 +5875,7 @@ namespace
 			case NumMode::kHeight: RE::SendHUDMessage::ShowHUDMessage(std::format("BOAT HEIGHT {:+.0f}: Num9 / Num3 up-down, Num0 + Num9 reset", boatHeight_).c_str()); break;
 			case NumMode::kNpcHeight: LakeBoats::TuneRig(0, true); break;
 			case NumMode::kCrew: RE::SendHUDMessage::ShowHUDMessage("CREW SEATS: 8/2 forward-back, 4/6 left-right, 9/3 up-down, 7/1 turn. Num5 = next crew member"); break;
-			case NumMode::kSpeed: RE::SendHUDMessage::ShowHUDMessage("ROW SPEED: Num8 / Num2 top speed, Num9 / Num3 glide (less / more slowing between strokes), Num0 reset"); RowSpeedHud(); break;
+			case NumMode::kSpeed: RE::SendHUDMessage::ShowHUDMessage("ROW SPEED: Num8 / Num2 top speed, Num9 / Num3 glide (less / more slowing between strokes), Num4 / Num6 turning, Num0 reset"); RowSpeedHud(); break;
 			case NumMode::kRipple: rippleSide_ = 0; RE::SendHUDMessage::ShowHUDMessage("STERN RIPPLE: 8/2 forward-back, 4/6 left-right, 9/3 up-down, Num0 reset. Num5 = the other one"); RippleSideHud(); break;
 			case NumMode::kFloor: RE::SendHUDMessage::ShowHUDMessage(std::format("FLOOR {:+.1f}: Num9 / Num3 up-down (0.5 a step), Num0 back to +3", BoatBow::FloorOffset()).c_str()); break;
 			case NumMode::kDogs: RE::SendHUDMessage::ShowHUDMessage("DOG SEATS: 8/2 forward-back, 4/6 left-right, 9/3 up-down, 7/1 turn, 0 reset. Num5 = next dog"); break;
@@ -5876,8 +5899,23 @@ namespace
 			}
 			logger::info("Row: top speed {:.0f}, glide drag {:.2f} ({})", rowProfile_.maxSpeed, rowProfile_.coastDrag, a_why);
 		}
+		// 56.45: turning rate as a scale of the default (0.5 rad/s slow, 0.45 at speed), [Row] Turn.
+		float rowTurnScale_{ 1.0f };
+		void SetRowTurn(float a_scale, const char* a_why, bool a_save = true)
+		{
+			rowTurnScale_ = std::clamp(std::round(a_scale * 20.0f) / 20.0f, 0.3f, 3.0f);
+			rowProfile_.turnLow = 0.5f * rowTurnScale_;
+			rowProfile_.turnHigh = 0.45f * rowTurnScale_;
+			if (a_save) WritePrivateProfileStringA("Row", "Turn", std::format("{:.2f}", rowTurnScale_).c_str(), FlowIniPath().c_str());
+			logger::info("Row: turning {:.0f}% ({})", rowTurnScale_ * 100.0f, a_why);
+		}
 		void LoadRowSpeedIni()
 		{
+			{
+				char t[32]{};
+				GetPrivateProfileStringA("Row", "Turn", "", t, sizeof(t), FlowIniPath().c_str());
+				if (t[0]) { try { SetRowTurn(std::stof(t), "ini", false); } catch (...) {} }
+			}
 			char a[32]{}, b[32]{};
 			GetPrivateProfileStringA("Row", "MaxSpeed", "", a, sizeof(a), FlowIniPath().c_str());
 			GetPrivateProfileStringA("Row", "Glide", "", b, sizeof(b), FlowIniPath().c_str());
@@ -5890,7 +5928,56 @@ namespace
 		void RowSpeedHud()
 		{
 			const float pct = 100.0f * rowProfile_.maxSpeed / kRowMaxSpeed;
-			RE::SendHUDMessage::ShowHUDMessage(std::format("Row speed {:.0f} ({:.0f}% of default)   glide drag {:.2f} (default {:.2f})", rowProfile_.maxSpeed, pct, rowProfile_.coastDrag, kRowCoastDrag).c_str());
+			RE::SendHUDMessage::ShowHUDMessage(std::format("Row speed {:.0f} ({:.0f}% of default)   glide drag {:.2f} (default {:.2f})   turning {:.0f}%", rowProfile_.maxSpeed, pct, rowProfile_.coastDrag, kRowCoastDrag, rowTurnScale_ * 100.0f).c_str());
+		}
+
+		// 56.45: ripple sizes kept in the ini [Ripple] Wake / Oar / Stern / Space (oas "ripple wake N" etc.).
+		static void SaveRippleIni()
+		{
+			const auto& rt = BoatBow::Ripples();
+			const auto ini = FlowIniPath();
+			WritePrivateProfileStringA("Ripple", "Wake", std::format("{:.3f}", rt.wake).c_str(), ini.c_str());
+			WritePrivateProfileStringA("Ripple", "Oar", std::format("{:.3f}", rt.oar).c_str(), ini.c_str());
+			WritePrivateProfileStringA("Ripple", "Stern", std::format("{:.0f}", rt.stern).c_str(), ini.c_str());
+			WritePrivateProfileStringA("Ripple", "Space", std::format("{:.0f}", rt.space).c_str(), ini.c_str());
+		}
+		void LoadRippleIni()
+		{
+			auto& rt = BoatBow::Ripples();
+			const auto ini = FlowIniPath();
+			auto rd = [&](const char* a_key, float& a_v, float a_min) {
+				char b[32]{};
+				GetPrivateProfileStringA("Ripple", a_key, "", b, sizeof(b), ini.c_str());
+				if (!b[0]) return;
+				try { const float v = std::stof(b); if (v >= a_min) a_v = v; } catch (...) {}
+			};
+			rd("Wake", rt.wake, 0.001f);
+			rd("Oar", rt.oar, 0.001f);
+			rd("Stern", rt.stern, -10000.0f);
+			rd("Space", rt.space, 1.0f);
+			logger::info("Ripple: wake {:.3f} oar {:.3f} stern {:.0f} space {:.0f} (ini or defaults)", rt.wake, rt.oar, rt.stern, rt.space);
+		}
+
+		// 56.45: oas "reset settings": every value a player can tune back to the mod's defaults (and saved so).
+		void ResetPlayerSettings()
+		{
+			SetBoatHeight(kDefaultBoatHeight, "reset settings", false);
+			BoatBow::SetFloorOffset(3.0f);
+			SetRowSpeed(kRowMaxSpeed, kRowCoastDrag, "reset settings");
+			SetRowTurn(1.0f, "reset settings");
+			BoatBow::Ripples() = BoatBow::RippleTune{};
+			SaveRippleIni();
+			BoatBow::WakeSideOffset(0) = RE::NiPoint3{};
+			BoatBow::WakeSideOffset(1) = RE::NiPoint3{};
+			BoatBow::SaveWakeSideOffsets();
+			for (int i = 0; i < kDogSeats; ++i) { dogSeatOff_[i] = RE::NiPoint3{}; dogSeatYaw_[i] = 0.0f; SaveDogSeat(i); }
+			LakeBoats::Command("lakeboats on");
+			LakeBoats::Command("lakeboats 6");
+			LakeBoats::Command("lakeboats view 5");
+			LakeBoats::TuneRig(0x52, false);  // NPC boat height back to its default
+			numMode_ = NumMode::kOff;
+			RE::SendHUDMessage::ShowHUDMessage("Oars and Sails: settings back to the defaults");
+			logger::info("Settings: all player settings reset to the defaults");
 		}
 
 		void RippleSideHud()
@@ -5926,15 +6013,20 @@ namespace
 				else SetBoatHeight(boatHeight_ + (a_key == 0x49 ? 1.0f : -1.0f), "Num9/Num3");
 				return;
 			case NumMode::kSpeed: {
-				if (a_key != 0x48 && a_key != 0x50 && a_key != 0x49 && a_key != 0x51 && a_key != 0x52) return;
+				if (a_key != 0x48 && a_key != 0x50 && a_key != 0x49 && a_key != 0x51 && a_key != 0x52 && a_key != 0x4B && a_key != 0x4D) return;
 				if (!NumStepReady()) return;
 				float maxS = rowProfile_.maxSpeed, drag = rowProfile_.coastDrag;
+				if (a_key == 0x4B || a_key == 0x4D) {  // Num4 / Num6: turn slower / faster (56.45)
+					SetRowTurn(rowTurnScale_ + (a_key == 0x4D ? 0.05f : -0.05f), "numpad");
+					RowSpeedHud();
+					return;
+				}
 				switch (a_key) {
 				case 0x48: maxS += 10.0f; break;   // Num8 faster
 				case 0x50: maxS -= 10.0f; break;   // Num2 slower
 				case 0x49: drag -= 0.01f; break;   // Num9 glides further (less slowing between strokes)
 				case 0x51: drag += 0.01f; break;   // Num3 slows more between strokes
-				case 0x52: maxS = kRowMaxSpeed; drag = kRowCoastDrag; break;  // Num0 defaults
+				case 0x52: maxS = kRowMaxSpeed; drag = kRowCoastDrag; SetRowTurn(1.0f, "numpad reset"); break;  // Num0 defaults (turn too)
 				default: break;
 				}
 				SetRowSpeed(maxS, drag, "numpad");
@@ -7746,6 +7838,7 @@ namespace
 			boardChoice_ = BoardChoice::kDefault;
 			AssignBoardingSeats(playerRows);
 			SelectPlayerSeat(RowerSeat() == nullptr);  // nobody to row: the player takes the rowing seat, otherwise the stern
+			faceRowerPending_ = playerOnRowSeat_ && faceRowerOn_;  // 56.45: third person view turned to the rower's face once
 			BoatBow::SetPickAllowed(false);
 			inputLogged_ = false;
 			padLogs_ = 0;
@@ -10322,6 +10415,11 @@ namespace
 					return true;
 				}
 
+				if (lower == "reset settings" || lower == "settings reset" || lower == "resetsettings") {
+					OarsAndSails::Get().ResetPlayerSettings();
+					if (console) console->Print("Oars and Sails: settings back to the defaults (height, floor, speed, turning, ripples, dog seats, NPC boats)");
+					return true;
+				}
 				if (lower == "floor" || lower.rfind("floor ", 0) == 0) {
 					// 56.35: oas "floor N" sets the bilge floor's height offset (units from its built height, -30..20); oas floor shows it
 					const std::string rest = lower.size() > 5 ? lower.substr(6) : std::string{};
@@ -10386,6 +10484,9 @@ namespace
 						"oas icelist                     statics near you, for the ice ini hints",
 						"oas <switch> / oas \"<switch> off\"   rower idles peace contact tilt groundv2 waterpatch flow cascade ice descent ...",
 						"oas sweep / oas boat / oas unboat / oas unstick",
+						"oas \"num <target>\"   numpad tuning: speed height floor ripple stow rower oars crew dog npc off",
+						"oas \"row speed 300\" / \"row drag 0.25\" / \"row turn 0.45\"   oas \"floor 3\"   oas \"boat height 5\"",
+						"oas \"ripple wake 0.05\" / \"ripple oar 0.05\"   oas \"lakeboats off|on|<0-10>\"   oas \"reset settings\"",
 					};
 					for (const char* line : kHelp) {
 						logger::info("Help: {}", line);
@@ -10506,6 +10607,7 @@ namespace
 						return true;
 					}
 					logger::info("Ripple tuning: wake={:.2f} oar={:.2f} stern={:.0f} space={:.0f}", rt.wake, rt.oar, rt.stern, rt.space);
+					OarsAndSails::SaveRippleIni();  // 56.45: kept across launches
 					if (console) console->Print("Oars and Sails: ripple tuning updated (see OarsAndSails.log)");
 					return true;
 				}
@@ -10533,8 +10635,7 @@ namespace
 					} else if (field == "brake" && value > 1.0f) {
 						ac.rowProfile_.brake = value;
 					} else if (field == "turn" && value > 0.05f) {
-						ac.rowProfile_.turnHigh = value;
-						ac.rowProfile_.turnLow = value * 1.1f;
+						ac.SetRowTurn(value / 0.45f, "oas row turn");  // 56.45: kept in the ini as a scale
 					} else {
 						if (console) console->Print("Oars and Sails: row | row speed N | row drag N | row brake N | row turn N");
 						return true;
@@ -11274,6 +11375,7 @@ namespace
 		OarsAndSails::Get().LoadBoatHeightIni();  // 56.26
 		OarsAndSails::Get().LoadDogSeatsIni();  // 56.29
 		OarsAndSails::Get().LoadRowSpeedIni();  // 56.44
+		OarsAndSails::Get().LoadRippleIni();  // 56.45
 		BoatBow::BakedOarsOn();               // 56.5: logs the BakedOars switch and the baked oar tune
 		{ const auto& b = BoatBow::RowBench(); logger::info("RowBench default: right={:.0f} forward={:.0f} up={:.0f} yaw={:.0f} scale={:.2f}", b.offset.x, b.offset.y, b.offset.z, b.yaw * 57.2958f, b.scale); }
 	}
