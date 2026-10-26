@@ -14,3 +14,9 @@ heading is reset (CancelGameTurn). HoldRowerOrbit now only re-enables an orbit t
 Still spun after 56.55. Face-the-rower is off for this release: [Camera] FaceRowerExperimental=1 brings it back (old FaceRower key
 ignored). With it off nothing touches the third person orbit (CancelGameTurn / HoldRowerOrbit gated too). Redo later via the
 camera hook instead of the free orbit.
+
+## 56.57 the spin is the game's
+Log 07:39 (face-the-rower OFF): the game had the orbit on by itself and swung freeRotation ~3 rad and back within seconds while
+the heading we set stayed steady (cY - fr == our heading). HoldOrbitAboard: aboard (any seat, third person) the orbit only moves on
+frames with PlayerControls lookInputVec (mouse / right stick); other changes are undone, a switched-off orbit is put back.
+Log: "Camera: orbit aboard ..., game swing undone ... rad, look input on N of M frames" every 2 s.

@@ -3756,6 +3756,41 @@ namespace
 			if (tps->freeRotationEnabled) { orbitX_ = tps->freeRotation.x; orbitHave_ = true; }
 		}
 
+		// 56.57: the spin is the game's own: once the third person orbit is on aboard, the game keeps swinging it (back behind
+		// the actor whenever it thinks the actor moves; the log showed it swinging 3 rad and back while the heading we set stayed
+		// steady). Aboard, the orbit now only moves on frames with real look input (PlayerControls lookInputVec: mouse or
+		// right stick); any other change is undone, and an orbit the game switches off is put back where it was.
+		float orbitUndone_{ 0.0f };
+		int orbitLookFrames_{ 0 }, orbitFrames_{ 0 };
+		std::chrono::steady_clock::time_point orbitLogAt_{};
+		void HoldOrbitAboard(RE::PlayerCamera* a_cam, bool a_active)
+		{
+			if (!a_active || !a_cam || !a_cam->currentState || a_cam->currentState->id != RE::CameraState::kThirdPerson) { orbitHave_ = false; return; }
+			auto* tps = static_cast<RE::ThirdPersonState*>(a_cam->currentState.get());
+			auto* pc = RE::PlayerControls::GetSingleton();
+			const bool look = pc && (std::fabs(pc->data.lookInputVec.x) > 1.0e-4f || std::fabs(pc->data.lookInputVec.y) > 1.0e-4f);
+			++orbitFrames_;
+			if (look) ++orbitLookFrames_;
+			if (orbitHave_ && !look) {
+				if (!tps->freeRotationEnabled) {
+					tps->freeRotationEnabled = true;
+					tps->freeRotation.x = orbitX_;
+					if (orbitFixLogs_++ < 6) logger::info("Camera: the game switched the orbit off aboard ({:.3f}), put back", orbitX_);
+				} else if (std::fabs(tps->freeRotation.x - orbitX_) > 1.0e-5f) {
+					orbitUndone_ += std::fabs(tps->freeRotation.x - orbitX_);
+					tps->freeRotation.x = orbitX_;
+				}
+			}
+			if (tps->freeRotationEnabled) { orbitX_ = tps->freeRotation.x; orbitHave_ = true; }
+			const auto now = std::chrono::steady_clock::now();
+			if (now - orbitLogAt_ >= std::chrono::seconds(2)) {
+				orbitLogAt_ = now;
+				if (orbitUndone_ > 0.001f || orbitLookFrames_ > 0)
+					logger::info("Camera: orbit aboard {:.3f}, game swing undone {:.3f} rad, look input on {} of {} frames", orbitX_, orbitUndone_, orbitLookFrames_, orbitFrames_);
+				orbitUndone_ = 0.0f; orbitLookFrames_ = orbitFrames_ = 0;
+			}
+		}
+
 		// 56.55: the real cause of the spin. With the orbit on, the game turns the actor toward the camera (heading += k) and takes
 		// the same k off the orbit, so the camera stays put; we then put the heading back on the seat every frame, so the camera
 		// lost k each frame and spun. The turn the game made since our last SetAngle is given back to the orbit here.
@@ -3790,7 +3825,7 @@ namespace
 			const bool firstPerson = cam && cam->IsInFirstPerson();
 			if (!firstPerson && wasFirstPerson_ && playerOnRowSeat_) faceRowerPending_ = true;  // 56.45: into third person on the rowing seat
 			if (!firstPerson && (faceRowerPending_ || faceRowerHold_ > 0)) FaceRowerCamera(cam);
-			HoldRowerOrbit(cam, !firstPerson && playerOnRowSeat_);
+			HoldOrbitAboard(cam, !firstPerson);  // 56.57: any seat, face-the-rower or not
 			if (firstPerson && !wasFirstPerson_) {
 				// Coming back to first person: look the way the seat faces (the rowing seat looks at the stern, like a rower).
 				RE::NiPoint3 ang = a_player->GetAngle();
