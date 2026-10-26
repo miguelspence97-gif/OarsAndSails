@@ -115,8 +115,8 @@ namespace
 		float turnFloor;      // fraction of the turn rate available when stopped (rowers can spin the boat on the spot)
 	};
 	constexpr SkimProfile kMotorProfile{ kSkimMaxSpeed, kSkimAcceleration, kSkimBrake, 0.12f, kSkimReverseMax, kSkimReverseAccel, kSkimTurnLow, kSkimTurnHigh, kSkimTurnAuthoritySpeed, 0.5f };
-	constexpr float kRowMaxSpeed = 280.0f;            // 56.30: slower, a heavy rowboat (was 360)
-	constexpr float kRowCoastDrag = 0.05f;            // 56.49: very little slowing between strokes (was 0.25)
+	constexpr float kRowMaxSpeed = 300.0f;  // 56.50: Miguel's tune (was 280)
+	constexpr float kRowCoastDrag = 0.07f;            // 56.50: Miguel's tune (56.49 0.05, was 0.25)
 	constexpr float kRowAccelRate = 0.6f;             // 56.49: stroke pull = top speed x this, on its own (was top speed x drag: 0.25)
 	constexpr float kRowStrokesBase = 0.3366f;        // strokes per second: your tuned speed for the 3 second rowing animation (about 2.97 s per stroke, 20 per minute)
 	constexpr float kRowStrokesGain = 0.0f;           // no extra strokes with speed any more, so the oars stay in step with the animation
@@ -3706,11 +3706,26 @@ namespace
 			}
 			if (!faceRowerOn_ || !a_cam || !a_cam->currentState || a_cam->currentState->id != RE::CameraState::kThirdPerson) { faceRowerPending_ = faceRowerOn_ && faceRowerPending_; return; }
 			auto* tps = static_cast<RE::ThirdPersonState*>(a_cam->currentState.get());
-			tps->freeRotationEnabled = true;
-			tps->freeRotation.x = 3.14159265f;
-			faceRowerPending_ = false;
-			logger::info("Camera: third person turned to face the rower (W rows away from the camera)");
+			if (faceRowerPending_) {
+				// 56.50: the game resets the orbit a frame or two after a view switch or boarding (log: freeRotation back to 0),
+				// which left the camera behind the rower. Hold the turn for 45 frames, re-applying only if it was reset.
+				faceRowerPending_ = false;
+				faceRowerHold_ = 45;
+				tps->freeRotationEnabled = true;
+				tps->freeRotation.x = 3.14159265f;
+				logger::info("Camera: third person turned to face the rower (W rows away from the camera)");
+				return;
+			}
+			if (faceRowerHold_ <= 0) return;
+			--faceRowerHold_;
+			if (!tps->freeRotationEnabled || std::fabs(tps->freeRotation.x) < 0.5f) {
+				tps->freeRotationEnabled = true;
+				tps->freeRotation.x = 3.14159265f;
+				if (faceRowerResets_++ < 8) logger::info("Camera: the game reset the orbit behind the rower, turned back to face him ({} frames left)", faceRowerHold_);
+			}
 		}
+		int faceRowerHold_{ 0 };
+		int faceRowerResets_{ 0 };
 
 		void ApplyPlayerBody(RE::PlayerCharacter* a_player)
 		{
@@ -3722,7 +3737,7 @@ namespace
 			auto* cam = RE::PlayerCamera::GetSingleton();
 			const bool firstPerson = cam && cam->IsInFirstPerson();
 			if (!firstPerson && wasFirstPerson_ && playerOnRowSeat_) faceRowerPending_ = true;  // 56.45: into third person on the rowing seat
-			if (!firstPerson && faceRowerPending_) FaceRowerCamera(cam);
+			if (!firstPerson && (faceRowerPending_ || faceRowerHold_ > 0)) FaceRowerCamera(cam);
 			if (firstPerson && !wasFirstPerson_) {
 				// Coming back to first person: look the way the seat faces (the rowing seat looks at the stern, like a rower).
 				RE::NiPoint3 ang = a_player->GetAngle();
