@@ -14,3 +14,8 @@ Fix:
 - ini `[Camera] FirstPersonFreeLook=1` (0 = seated with the game's normal look limit).
 
 Log lines: "First person: seated, sit state N cleared ..." / "First person left: sit state put back (N)".
+
+## 56.48 fix
+Log showed bIsSitting mirrors the engine sit state, so while masked it read false and the watcher stood the player up every second
+("PlayerSit: the seat was lost"). Now the watcher trusts the seat while first person masks it, and leaving first person puts the
+sit state (and bIsSitting) back unconditionally.

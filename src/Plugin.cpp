@@ -3688,10 +3688,12 @@ namespace
 				st->actorState1.sitSleepState = RE::SIT_SLEEP_STATE::kNormal;
 			} else if (fpSitMasked_) {
 				fpSitMasked_ = false;
-				bool sitting = false;
-				a_player->GetGraphVariableBool("bIsSitting", sitting);
-				if (sitting && st->actorState1.sitSleepState == RE::SIT_SLEEP_STATE::kNormal) st->actorState1.sitSleepState = fpSitSaved_;
-				logger::info("First person left: sit state put back ({})", sitting ? static_cast<int>(fpSitSaved_) : 0);
+				// 56.48: the graph's bIsSitting mirrors the engine state, so it reads false while masked even though the seated
+				// animation never stopped. Put the state back unconditionally; the seat watcher takes over from here.
+				if (st->actorState1.sitSleepState == RE::SIT_SLEEP_STATE::kNormal) st->actorState1.sitSleepState = fpSitSaved_;
+				a_player->SetGraphVariableBool("bIsSitting", true);
+				sitMiss_ = 0;
+				logger::info("First person left: sit state put back ({})", static_cast<int>(fpSitSaved_));
 			}
 		}
 		bool faceRowerLoaded_{ false };
@@ -7188,6 +7190,9 @@ namespace
 			if (playerSit_ && !sitFailed_) {
 				// Seated pose. The game accepts the sit event once, from a standing pose; any later send is
 				// rejected because he is already seated, so never treat a rejection as a failure after an accept.
+				// 56.48: while first person masks the sit state, bIsSitting reads false too (it mirrors the state), so the
+				// "seat lost" test would stand the player up every second. The body is hidden then: trust the seat.
+				if (fpSitMasked_ && sitAccepted_) { sitMiss_ = 0; return; }
 				bool sitting = false;
 				player->GetGraphVariableBool("bIsSitting", sitting);
 				// The graph variable lags the engine's own sit state for a moment after the sit event, so trust either.
