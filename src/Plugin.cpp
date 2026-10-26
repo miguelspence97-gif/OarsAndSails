@@ -116,7 +116,8 @@ namespace
 	};
 	constexpr SkimProfile kMotorProfile{ kSkimMaxSpeed, kSkimAcceleration, kSkimBrake, 0.12f, kSkimReverseMax, kSkimReverseAccel, kSkimTurnLow, kSkimTurnHigh, kSkimTurnAuthoritySpeed, 0.5f };
 	constexpr float kRowMaxSpeed = 280.0f;            // 56.30: slower, a heavy rowboat (was 360)
-	constexpr float kRowCoastDrag = 0.25f;            // 56.41: back to 0.25 (0.35 slowed it too much between strokes)
+	constexpr float kRowCoastDrag = 0.05f;            // 56.49: very little slowing between strokes (was 0.25)
+	constexpr float kRowAccelRate = 0.6f;             // 56.49: stroke pull = top speed x this, on its own (was top speed x drag: 0.25)
 	constexpr float kRowStrokesBase = 0.3366f;        // strokes per second: your tuned speed for the 3 second rowing animation (about 2.97 s per stroke, 20 per minute)
 	constexpr float kRowStrokesGain = 0.0f;           // no extra strokes with speed any more, so the oars stay in step with the animation
 	// Land / obstacle behaviour: bleed speed instead of stopping dead.
@@ -641,7 +642,7 @@ namespace
 					// average still reaches the faster top speed: speed dips about 18% between digs instead of about 26%.
 					prof.maxSpeed *= kLightBoatFactor;
 					prof.coastDrag *= kLightBoatDrag;
-					prof.accel = prof.maxSpeed * prof.coastDrag;
+					prof.accel = prof.maxSpeed * kRowAccelRate;
 				}
 				if (light != lightBoatLogged_) {
 					lightBoatLogged_ = light;
@@ -5926,9 +5927,10 @@ namespace
 		void SetRowSpeed(float a_max, float a_drag, const char* a_why, bool a_save = true)
 		{
 			rowProfile_.maxSpeed = std::clamp(std::round(a_max), 100.0f, 700.0f);
-			rowProfile_.coastDrag = std::clamp(std::round(a_drag * 100.0f) / 100.0f, 0.05f, 0.80f);
-			rowProfile_.accel = rowProfile_.maxSpeed * rowProfile_.coastDrag;
+			rowProfile_.coastDrag = std::clamp(std::round(a_drag * 100.0f) / 100.0f, 0.01f, 0.80f);
+			rowProfile_.accel = rowProfile_.maxSpeed * kRowAccelRate;  // 56.49: quick pick-up whatever the glide
 			if (a_save) {
+				WritePrivateProfileStringA("Row", "Model", "2", FlowIniPath().c_str());
 				WritePrivateProfileStringA("Row", "MaxSpeed", std::format("{:.0f}", rowProfile_.maxSpeed).c_str(), FlowIniPath().c_str());
 				WritePrivateProfileStringA("Row", "Glide", std::format("{:.2f}", rowProfile_.coastDrag).c_str(), FlowIniPath().c_str());
 			}
@@ -5954,6 +5956,11 @@ namespace
 			char a[32]{}, b[32]{};
 			GetPrivateProfileStringA("Row", "MaxSpeed", "", a, sizeof(a), FlowIniPath().c_str());
 			GetPrivateProfileStringA("Row", "Glide", "", b, sizeof(b), FlowIniPath().c_str());
+			// 56.49: a Glide saved before the new model (drag 0.05, own acceleration) is dropped once for the new default.
+			if (GetPrivateProfileIntA("Row", "Model", 1, FlowIniPath().c_str()) < 2) {
+				if (b[0]) logger::info("Row: old saved glide {} dropped for the new default {:.2f}", b, kRowCoastDrag);
+				b[0] = 0;
+			}
 			if (!a[0] && !b[0]) return;
 			float m = kRowMaxSpeed, d = kRowCoastDrag;
 			try { if (a[0]) m = std::stof(a); } catch (...) {}
@@ -9271,10 +9278,10 @@ namespace
 			if (playerSkim_) { if (hideHudInBoat_) HideHUD(); else ForceHudVisible(true); }
 		}
 		bool rowMode_{ true };  // true = heavy rowing boat (default), false = motor / speedboat profile (`oas row` toggles)
-		SkimProfile rowProfile_{ kRowMaxSpeed, kRowMaxSpeed * kRowCoastDrag, 120.0f, kRowCoastDrag, 60.0f, 20.0f, 0.5f, 0.45f, 120.0f, 0.9f };
+		SkimProfile rowProfile_{ kRowMaxSpeed, kRowMaxSpeed * kRowAccelRate, 120.0f, kRowCoastDrag, 60.0f, 20.0f, 0.5f, 0.45f, 120.0f, 0.9f };
 		const SkimProfile& P() const { return rowMode_ ? rowProfile_ : kMotorProfile; }
-		static constexpr float kLightBoatFactor = 1.12f;  // 56.36: 12% faster with only the player (and dogs) aboard
-		static constexpr float kLightBoatDrag = 0.7f;     // 56.38: the light boat's glide drag (x0.7: 0.35 -> about 0.25)
+		static constexpr float kLightBoatFactor = 1.0f;   // 56.49: off for now, same speed with or without crew (was 1.12)  // 56.36: 12% faster with only the player (and dogs) aboard
+		static constexpr float kLightBoatDrag = 1.0f;     // 56.49: off for now (was 0.7)
 		bool lightBoatLogged_{ false };
 		bool oarLink_{ true };  // the numpad moves both oars, mirrored (`oas "oar link"` toggles)
 	private:
