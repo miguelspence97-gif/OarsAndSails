@@ -3527,9 +3527,12 @@ namespace
 								}
 							}
 						}
+					} else if (e->GetEventType() == RE::INPUT_EVENT_TYPE::kMouseMove) {
+						self.lookInputAt_ = std::chrono::steady_clock::now();  // 56.54: the player turned the camera
 					} else if (e->GetEventType() == RE::INPUT_EVENT_TYPE::kThumbstick) {
 						auto* t = static_cast<RE::ThumbstickEvent*>(e);
 						if (t->device == RE::INPUT_DEVICE::kGamepad) self.NotePadEvent(false, {});
+						if (!t->IsLeft() && (std::fabs(t->xValue) > 0.05f || std::fabs(t->yValue) > 0.05f)) self.lookInputAt_ = std::chrono::steady_clock::now();
 						if (t->IsLeft()) {
 							self.stickX_ = t->xValue;
 							self.stickY_ = t->yValue;
@@ -3710,9 +3713,10 @@ namespace
 				// 56.50: the game resets the orbit a frame or two after a view switch or boarding (log: freeRotation back to 0),
 				// which left the camera behind the rower. Hold the turn for 45 frames, re-applying only if it was reset.
 				faceRowerPending_ = false;
-				faceRowerHold_ = 45;
+				faceRowerHold_ = 0;  // 56.54: HoldRowerOrbit keeps it now
 				tps->freeRotationEnabled = true;
 				tps->freeRotation.x = 3.14159265f;
+				orbitX_ = 3.14159265f; orbitHave_ = true;  // 56.54: the hold starts from the turn
 				logger::info("Camera: third person turned to face the rower (W rows away from the camera)");
 				return;
 			}
@@ -3721,11 +3725,35 @@ namespace
 			if (!tps->freeRotationEnabled || std::fabs(tps->freeRotation.x) < 0.5f) {
 				tps->freeRotationEnabled = true;
 				tps->freeRotation.x = 3.14159265f;
+				orbitX_ = 3.14159265f; orbitHave_ = true;  // 56.54: the hold starts from the turn
 				if (faceRowerResets_++ < 8) logger::info("Camera: the game reset the orbit behind the rower, turned back to face him ({} frames left)", faceRowerHold_);
 			}
 		}
 		int faceRowerHold_{ 0 };
 		int faceRowerResets_{ 0 };
+
+		// 56.54: on the rowing seat the game kept turning the orbit by itself while W was held (it turns the actor toward
+		// the camera and we put the heading back every frame, so the camera spun). The orbit now only moves with the mouse /
+		// right stick: any other change is undone, and an orbit the game switched off is switched back on where it was.
+		std::chrono::steady_clock::time_point lookInputAt_{};
+		bool orbitHave_{ false };
+		float orbitX_{ 0.0f };
+		int orbitFixLogs_{ 0 };
+		void HoldRowerOrbit(RE::PlayerCamera* a_cam, bool a_active)
+		{
+			if (!a_active || !faceRowerOn_ || !a_cam || !a_cam->currentState || a_cam->currentState->id != RE::CameraState::kThirdPerson) { orbitHave_ = false; return; }
+			auto* tps = static_cast<RE::ThirdPersonState*>(a_cam->currentState.get());
+			const bool looking = std::chrono::steady_clock::now() - lookInputAt_ < std::chrono::milliseconds(150);
+			if (orbitHave_ && !looking) {
+				const bool drifted = !tps->freeRotationEnabled || std::fabs(tps->freeRotation.x - orbitX_) > 0.0005f;
+				if (drifted) {
+					if (orbitFixLogs_++ < 6) logger::info("Camera: orbit moved by the game ({} {:.3f} -> {:.3f}), held", tps->freeRotationEnabled ? "on" : "off", orbitX_, tps->freeRotation.x);
+					tps->freeRotationEnabled = true;
+					tps->freeRotation.x = orbitX_;
+				}
+			}
+			if (tps->freeRotationEnabled) { orbitX_ = tps->freeRotation.x; orbitHave_ = true; }
+		}
 
 		void ApplyPlayerBody(RE::PlayerCharacter* a_player)
 		{
@@ -3738,6 +3766,7 @@ namespace
 			const bool firstPerson = cam && cam->IsInFirstPerson();
 			if (!firstPerson && wasFirstPerson_ && playerOnRowSeat_) faceRowerPending_ = true;  // 56.45: into third person on the rowing seat
 			if (!firstPerson && (faceRowerPending_ || faceRowerHold_ > 0)) FaceRowerCamera(cam);
+			HoldRowerOrbit(cam, !firstPerson && playerOnRowSeat_);
 			if (firstPerson && !wasFirstPerson_) {
 				// Coming back to first person: look the way the seat faces (the rowing seat looks at the stern, like a rower).
 				RE::NiPoint3 ang = a_player->GetAngle();
