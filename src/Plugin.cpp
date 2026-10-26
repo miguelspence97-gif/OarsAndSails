@@ -7856,6 +7856,7 @@ namespace
 			boardChoice_ = BoardChoice::kDefault;
 			AssignBoardingSeats(playerRows);
 			SelectPlayerSeat(RowerSeat() == nullptr);  // nobody to row: the player takes the rowing seat, otherwise the stern
+			if (playerOnRowSeat_) faceRowerPending_ = true;  // 56.47: boarding as the rower in third person: the camera faces him at once
 			faceRowerPending_ = playerOnRowSeat_ && faceRowerOn_;  // 56.45: third person view turned to the rower's face once
 			BoatBow::SetPickAllowed(false);
 			inputLogged_ = false;
