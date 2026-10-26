@@ -147,6 +147,7 @@ namespace BoatBow
 	void SetStaleRefs(const std::vector<std::pair<RE::FormID, std::string>>& a_refs);
 	int PurgeStaleRefs(const char* a_when);
 	int SweepOrphans(bool a_delete, const char* a_when);
+	void StrayTick(float a_dt);  // 56.60: every 5 s, old hulls / props from an older save that turned up are removed
 	// 43.3/43.4 (v1.0.39): no respawn while flying (a move instead), the hull watchdog, the chest count.
 	void SetFlightHold(bool a_hold);
 	float HullLag(float a_vx, float a_vy);  // hull root vs where it should be for this vehicle (-1: unknown)

@@ -9127,6 +9127,7 @@ namespace
 			HandleBoardingInput(a_player);
 			TendFlowProbe(a_player, a_delta);  // 43.5
 			BoatBow::UpdateParked((std::min)(a_delta, 0.1f));
+			BoatBow::StrayTick(a_delta);  // 56.60
 			LakeBoats::Update(a_delta);  // 51
 			FlushOarHud();
 			PostExitStand(a_player, a_delta);

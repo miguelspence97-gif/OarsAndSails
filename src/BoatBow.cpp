@@ -4725,12 +4725,80 @@ namespace BoatBow
 		return removed;
 	}
 
+	namespace
+	{
+		// 56.60: the orphan scan of SweepOrphans on its own, so the stray tick can use it without the log lines.
+		void CollectOrphans(std::vector<std::pair<RE::TESObjectREFR*, std::string>>& a_found, float a_range);
+	}
+
 	int SweepOrphans(bool a_delete, const char* a_when)
 	{
 		auto* player = RE::PlayerCharacter::GetSingleton();
 		auto* tes = RE::TES::GetSingleton();
 		auto* console = RE::ConsoleLog::GetSingleton();
 		if (!player || !tes) return 0;
+		const RE::NiPoint3 pp = player->GetPosition();
+		std::vector<std::pair<RE::TESObjectREFR*, std::string>> found;
+		CollectOrphans(found, 16000.0f);
+		int deleted = 0;
+		for (auto& [ref, type] : found) {
+			const auto pos = ref->GetPosition();
+			const std::string line = std::format("{} {:08X} base {:08X} at ({:.0f},{:.0f},{:.0f}), {:.0f} from the player", type, ref->GetFormID(),
+				ref->GetBaseObject()->GetFormID(), pos.x, pos.y, pos.z, (pos - pp).Length());
+			SKSE::log::info("Sweep: {}{}", line, a_delete ? "" : " (list only)");
+			if (console && std::string_view(a_when) == "oas sweep") console->Print("Oars and Sails sweep: %s", line.c_str());
+			if (a_delete && DeleteOldProp(ref, type)) ++deleted;
+		}
+		const std::string total = std::format("Sweep ({}): {} orphan prop ref(s) found, {} deleted", a_when, found.size(), deleted);
+		SKSE::log::info("{}", total);
+		if (console && std::string_view(a_when) == "oas sweep") console->Print("Oars and Sails %s", total.c_str());
+		return deleted;
+	}
+
+	// 56.60: hulls and props from an older save keep turning up later, when their cell loads (after the load-time cleanup
+	// ran). Every 5 s our own old hulls (never vanilla, never a lake boat, never the live / parked / hand-off one) and our
+	// untracked props around the player are collected; one seen on two ticks in a row is removed (so a ref in the middle
+	// of a respawn swap is never touched).
+	void StrayTick(float a_dt)
+	{
+		static float timer = 0.0f;
+		static std::vector<RE::FormID> prev;
+		if ((timer += a_dt) < 5.0f) return;
+		timer = 0.0f;
+		auto* player = RE::PlayerCharacter::GetSingleton();
+		auto* tes = RE::TES::GetSingleton();
+		if (!player || !tes) return;
+		auto* cell = player->GetParentCell();
+		if (!cell || !cell->IsAttached()) return;
+		std::vector<std::pair<RE::TESObjectREFR*, std::string>> found;
+		auto parked = g_parked.get();
+		tes->ForEachReferenceInRange(player, 9000.0f, [&](RE::TESObjectREFR* a_ref) {
+			if (a_ref && (a_ref->GetFormID() >> 24) == 0xFF && a_ref != parked.get() && !a_ref->IsDeleted() && IsOurBoatBase(a_ref->GetBaseObject()) && !IsLakeRef(a_ref)
+				&& !(g_cur.handle && g_cur.handle.get().get() == a_ref) && !(g_next.handle && g_next.handle.get().get() == a_ref)
+				&& !(g_leaving.handle && g_leaving.handle.get().get() == a_ref)) found.push_back({ a_ref, std::string("hull") });
+			return RE::BSContainer::ForEachResult::kContinue;
+		});
+		CollectOrphans(found, 9000.0f);
+		std::vector<RE::FormID> now;
+		for (auto& [ref, type] : found) {
+			const RE::FormID id = ref->GetFormID();
+			now.push_back(id);
+			if (std::find(prev.begin(), prev.end(), id) == prev.end()) continue;  // first sighting: wait one tick
+			const auto pos = ref->GetPosition();
+			SKSE::log::info("Stray: old {} {:08X} at ({:.0f},{:.0f},{:.0f}), {:.0f} from the player, removed", type, id, pos.x, pos.y, pos.z, (pos - player->GetPosition()).Length());
+			if (type == "hull") { ref->Disable(); ref->SetDelete(true); }
+			else DeleteOldProp(ref, type);
+		}
+		prev = std::move(now);
+	}
+
+	namespace
+	{
+	void CollectOrphans(std::vector<std::pair<RE::TESObjectREFR*, std::string>>& a_found, float a_range)
+	{
+		auto* player = RE::PlayerCharacter::GetSingleton();
+		auto* tes = RE::TES::GetSingleton();
+		if (!player || !tes) return;
 		// What our props look like: the model of every prop form (also catches a plain static twin with the same model),
 		// plus the lamp light and pick proxy forms by form.
 		struct Kind { std::string model; const RE::TESForm* form; std::string type; };
@@ -4747,34 +4815,20 @@ namespace BoatBow
 		for (RE::FormID id : { 0x0002D847u, 0x00041EC7u, 0x00050E77u, 0x000F3923u }) addForm(RE::TESForm::LookupByID(id), "Prop", true);
 		addForm(LampLightBase(), "LampLight", false);
 		for (const auto& pk : g_pick) addForm(pk.base, std::format("{} pick proxy", pk.tag), false);
-		const RE::NiPoint3 pp = player->GetPosition();
-		std::vector<std::pair<RE::TESObjectREFR*, std::string>> found;
-		tes->ForEachReferenceInRange(player, 16000.0f, [&](RE::TESObjectREFR* a_ref) {
+		tes->ForEachReferenceInRange(player, a_range, [&](RE::TESObjectREFR* a_ref) {
 			if (!a_ref || (a_ref->GetFormID() >> 24) != 0xFF || a_ref->IsDeleted() || IsLivePropRef(a_ref)) return RE::BSContainer::ForEachResult::kContinue;
 			const auto* base = a_ref->GetBaseObject();
 			if (!base) return RE::BSContainer::ForEachResult::kContinue;
 			const std::string model = LowerModel(base);
 			for (const auto& k : kinds) {
 				if (base == k.form || (!k.model.empty() && model == k.model)) {
-					found.push_back({ a_ref, k.type });
+					a_found.push_back({ a_ref, k.type });
 					break;
 				}
 			}
 			return RE::BSContainer::ForEachResult::kContinue;
 		});
-		int deleted = 0;
-		for (auto& [ref, type] : found) {
-			const auto pos = ref->GetPosition();
-			const std::string line = std::format("{} {:08X} base {:08X} at ({:.0f},{:.0f},{:.0f}), {:.0f} from the player", type, ref->GetFormID(),
-				ref->GetBaseObject()->GetFormID(), pos.x, pos.y, pos.z, (pos - pp).Length());
-			SKSE::log::info("Sweep: {}{}", line, a_delete ? "" : " (list only)");
-			if (console && std::string_view(a_when) == "oas sweep") console->Print("Oars and Sails sweep: %s", line.c_str());
-			if (a_delete && DeleteOldProp(ref, type)) ++deleted;
-		}
-		const std::string total = std::format("Sweep ({}): {} orphan prop ref(s) found, {} deleted", a_when, found.size(), deleted);
-		SKSE::log::info("{}", total);
-		if (console && std::string_view(a_when) == "oas sweep") console->Print("Oars and Sails %s", total.c_str());
-		return deleted;
+	}
 	}
 
 	bool SpawnParked(float a_x, float a_y, float a_z, float a_yaw, bool a_keepProps)

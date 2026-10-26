@@ -24,3 +24,7 @@ Names are lowercase (the console line is lowercased).
 - 56.53 strays: a hull removed while its cell was unloaded came back with the cell (no paint, own bench/crate) and sat
   inside the dock boat. CleanupOldBoats (our FF hulls only, never vanilla) + prop sweep now run when the boat arrives at a
   dock, again 4 s later, and on every board. The hand-off hull (g_leaving) is excluded.
+
+- 56.60 stray tick: every 5 s, our old hulls (FF, our base, not lake / live / parked / hand-off) and untracked props within
+  9000 of the player are collected; one seen on two ticks in a row is removed ("Stray: old ... removed" in the log). Catches
+  boats from an older save whose cell loads after the load-time cleanup.
