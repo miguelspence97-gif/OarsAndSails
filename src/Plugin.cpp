@@ -8719,10 +8719,11 @@ namespace
 			float water = 0.0f;
 			const float z = SkimWaterAt(RE::NiPoint3{ d.x, d.y, d.z + 100.0f }, water) ? water + kParkedBoatZ + boatHeight_ : d.z;
 			{
-				// Each dock has its own colour (blue or beige), picked from its name so the same dock always shows the same boat.
+				// Each dock has its own colour (one of our six paints), picked from its name so the same dock always shows the same boat.
 				std::uint32_t h = 2166136261u;
 				for (const char c : d.name) h = (h ^ static_cast<std::uint8_t>(c)) * 16777619u;
-				const int paint = (h & 1u) ? BoatBow::kPaintBeige : BoatBow::kPaintBlue;
+				// 56.52: any of our six paints (not vanilla)
+				const int paint = BoatBow::kPaintBeige + static_cast<int>(h % static_cast<std::uint32_t>(BoatBow::kPaintCount - BoatBow::kPaintBeige));
 				if (BoatBow::Paint() != paint) BoatBow::SetPaint(paint, "dock colour");
 			}
 			if (BoatBow::SpawnParked(d.x, d.y, z, d.yaw)) {
@@ -10704,7 +10705,7 @@ namespace
 					if (lower.size() > 6) {
 						const int p = BoatBow::ParsePaint(lower.substr(6));
 						if (p < 0) {
-							if (console) console->Print("Oars and Sails: paint is blue, beige or vanilla");
+							if (console) console->Print("Oars and Sails: paint is blue, beige, black, red, white, bluedesign or vanilla");
 							return true;
 						}
 						BoatBow::SetPaint(p, "oas paint");
@@ -10724,7 +10725,7 @@ namespace
 						"oas flowpull180  or  oas \"flow pull 180\"   set a flow value: pull rapids range curve capture turn throw throwmax kick",
 						"oas flowoff / oas flowon / oas flowreset / oas flowprobe",
 						"oas hullfeel / oas hullfeellog / oas hullfeellen300",
-						"oas paintblue / paintbeige / paintvanilla",
+						"oas \"paint blue\" / beige / black / red / white / bluedesign / vanilla",
 						"oas icelist                     statics near you, for the ice ini hints",
 						"oas <switch> / oas \"<switch> off\"   rower idles peace contact tilt groundv2 waterpatch flow cascade ice descent ...",
 						"oas sweep / oas boat / oas unboat / oas unstick",

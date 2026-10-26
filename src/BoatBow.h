@@ -122,7 +122,8 @@ namespace BoatBow
 	void CheckBoatTextures();
 	std::string BoatTextureStatus();
 	// Part 32: the paint job (oas paint), kept in the co-save. Blue is the default; vanilla is no override at all.
-	enum : int { kPaintVanilla = 0, kPaintBeige = 1, kPaintBlue = 2, kPaintCount = 3 };
+	// 56.52: black, red, white and blue-with-design side planks (same premium wood hull). The co-save keeps the number.
+	enum : int { kPaintVanilla = 0, kPaintBeige = 1, kPaintBlue = 2, kPaintBlack = 3, kPaintRed = 4, kPaintWhite = 5, kPaintBlueDesign = 6, kPaintCount = 7 };
 	int Paint();
 	const char* PaintName(int a_paint);
 	int ParsePaint(std::string_view a_name);  // -1 for an unknown name

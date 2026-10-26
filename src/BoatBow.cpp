@@ -258,18 +258,22 @@ namespace BoatBow
 		};
 		BoatTex g_boatTex[] = {
 			{ "rope", "L1_BoatDetails", "shiprope01.dds", "textures\\dungeons\\ships\\ShipRope01.dds",
-				{ nullptr, "textures\\OarsAndSails\\boat_rope_d.dds", nullptr } },
+				{ nullptr, "textures\\OarsAndSails\\boat_rope_d.dds", nullptr, nullptr, nullptr, nullptr, nullptr } },
 			{ "side", "ShipRowBoat01:3", "shipwoodside01.dds", "textures\\dungeons\\ships\\ShipWoodSide01.dds",
-				{ nullptr, "textures\\OarsAndSails\\boat_side_d.dds", "textures\\OarsAndSails\\boat_side_blue_d.dds" } },
+				{ nullptr, "textures\\OarsAndSails\\boat_side_d.dds", "textures\\OarsAndSails\\boat_side_blue_d.dds",
+					"textures\\OarsAndSails\\boat_side_black_d.dds", "textures\\OarsAndSails\\boat_side_red_d.dds",
+					"textures\\OarsAndSails\\boat_side_white_d.dds", "textures\\OarsAndSails\\boat_side_bluedesign_d.dds" } },
 			{ "hull", "ShipRowBoat01:5 - L1_BoatDetails:5", "shipwood01.dds", "textures\\dungeons\\ships\\ShipWood01.dds",
-				{ nullptr, "textures\\OarsAndSails\\boat_hull_d.dds", "textures\\OarsAndSails\\boat_hull_blue_d.dds" } },
+				{ nullptr, "textures\\OarsAndSails\\boat_hull_d.dds", "textures\\OarsAndSails\\boat_hull_blue_d.dds",
+					"textures\\OarsAndSails\\boat_hull_d.dds", "textures\\OarsAndSails\\boat_hull_d.dds",
+					"textures\\OarsAndSails\\boat_hull_d.dds", "textures\\OarsAndSails\\boat_hull_d.dds" } },
 		};
 		int g_paint = kPaintBlue;  // 32.5: blue unless the co-save says otherwise
 		RE::FormID g_texShapesLoggedFor = 0;
 		// 44.4.1: the override runs once per ref and 3D (it ran every frame for the live and the spare hull, a hitch).
 		std::vector<std::pair<RE::FormID, const RE::NiAVObject*>> g_texDone;
 		std::vector<RE::FormID> g_texShapesLogged;
-		constexpr const char* kPaintNames[kPaintCount] = { "vanilla", "beige", "blue" };
+		constexpr const char* kPaintNames[kPaintCount] = { "vanilla", "beige", "blue", "black", "red", "white", "bluedesign" };
 
 		bool EndsWithI(std::string_view a_text, std::string_view a_end)
 		{
