@@ -1,0 +1,69 @@
+Oars and Sails v1.0.79 - Tune sheet
+===================================
+
+Open the console with ~ and type a command. Everything you change is saved in
+Data\SKSE\Plugins\OarsAndSails.ini and kept between games.
+Board the boat first: the numpad only works on your own boat.
+
+1. Numpad modes (the numpad is off until you pick one)
+   oas "num speed"    rowing feel
+                        Num8 / Num2  faster / slower (steps of 10)
+                        Num9 / Num3  longer / shorter glide between strokes
+                        Num4 / Num6  turn slower / faster
+                        Num0         reset speed, glide and turning
+   oas "num height"   how high the boat sits in the water   Num9 / Num3, Num0 + Num9 reset
+   oas "num floor"    plank floor height                    Num9 / Num3, Num0 reset
+   oas "num ripple"   move a stern ripple                   Num5 switches left / right
+   oas "num stow"     oars lying in the parked boat
+   oas "num crew"     crew seats, one at a time            Num5 next seat
+   oas "num dog"      dog seats, one at a time             Num5 next seat
+   oas "num npc"      NPC lake boat height
+   oas "num rower"    the rowing seat
+   oas "num oars"     oars in the rower's hands
+   oas "num off"      numpad off
+   The keys for each mode also show on screen when you turn it on.
+
+    Speed mode keys:   [7]      [8 faster]      [9 longer glide]
+                       [4 turn slower] [5]   [6 turn faster]
+                       [1]      [2 slower]      [3 shorter glide]
+                       [0 reset all three   ]   [.]
+
+2. Direct values                                          default
+   oas "row speed 300"      top rowing speed               300
+   oas "row drag 0.07"      glide (lower = longer glide)   0.07
+   oas "row turn 0.45"      turning                        0.45
+   oas "boat height 5"      hull height in the water       5
+   oas "floor 3"            plank floor offset             3
+   oas "eye 22"             first person view height       22   (-40 to 80, not saved yet)
+   oas "ripple wake 0.05"   stern ripple size              0.05
+   oas "ripple oar 0.05"    oar glide ripple size          0.05
+   oas ripples              ripples on / off               on
+   oas paintblue            boat colour: paintblue, paintbeige, paintblack, paintred,
+                            paintwhite, paintbluedesign, paintvanilla
+   oas "lakeboats 6"        NPC boats per lake (0-10), also "lakeboats off" / "lakeboats on"
+   oas "reset settings"     everything above back to the defaults
+   oas help / oas status    all commands / current values
+
+3. Boat spots
+   Your boat waits at the spots in OarsAndSails_Docks.ini. Walk within ~2500 of one and the boat is
+   there, facing the way the spot was placed. A boat you left within ~3000 of you is never moved.
+   oas "dock list"          all spots and how far away they are
+   oas "dock add <name>"    save your boat's current spot (and facing) as a new spot
+   oas "dock del"           remove the nearest spot
+   oas "dock off" / "dock on"
+
+4. Where the numbers sit (side view)
+
+        eye 22 (first person view)
+           o                                   boat height 5: whole hull up / down
+          /|        ________________________  /
+   stern ____|_____/                        \/ bow
+         \  floor 3 (plank floor) ___________/
+   ~ ~ ~ ~\~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~/~ ~ ~ ~  waterline
+   ripples \______________________________/
+
+   The floor rides with the hull, so set the boat height first, then the floor.
+
+5. Ini-only settings (Data\SKSE\Plugins\OarsAndSails.ini, [Camera])
+   FaceRower=1            third person camera faces you when you row alone (0 = stays behind you)
+   FirstPersonFreeLook=1  first person stays seated and looks all around (0 = the game's seated look limit)
