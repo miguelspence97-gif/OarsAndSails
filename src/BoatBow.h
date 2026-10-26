@@ -89,7 +89,7 @@ namespace BoatBow
 	// right / forward / up from the vehicle point, yaw in radians, uniform scale. Tuned with the numpad.
 	struct PlankTune
 	{
-		RE::NiPoint3 offset{ -2.0f, 8.0f, -57.0f };  // tuned in game
+		RE::NiPoint3 offset{ 0.0f, 8.0f, -57.0f };  // tuned in game (56.59: centred, was -2)
 		float yaw = 0.0f;
 		float scale = 0.65f;
 	};

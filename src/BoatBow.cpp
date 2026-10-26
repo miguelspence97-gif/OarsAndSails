@@ -474,7 +474,7 @@ namespace BoatBow
 		// not about eye height. Rolling about the eyes slid the hull and bench sideways past the seated player.
 		constexpr float kRollPivotDrop = 35.0f;
 		float g_scale = 1.0f;
-		RE::NiPoint3 g_offset{ -2.0f, 250.0f, -112.0f };
+		RE::NiPoint3 g_offset{ 0.0f, 250.0f, -112.0f };  // 56.59: dead centre (was -2)
 		float g_yaw = 0.0f;  // extra rotation of the mesh relative to the heading, radians
 		// The boat's last rigid transform, so passengers can be glued to it.
 		RE::NiMatrix3 g_rigidRot;
@@ -679,8 +679,8 @@ namespace BoatBow
 		constexpr const char* kLampSternForm = "0002D847";
 		constexpr const char* kLampBowForm = "0002D847";
 		LampTune g_lamp[2] = {
-			LampTune{ RE::NiPoint3{ -2.0f, -91.0f, 28.0f }, 0.0f, 1.0f },   // stern post (Miguel's numpad tuning, v1.0.7)
-			LampTune{ RE::NiPoint3{ -2.0f, 577.0f, 0.0f }, 0.0f, 0.85f } };  // bow tip (Miguel's numpad tuning, v1.0.7)
+			LampTune{ RE::NiPoint3{ 0.0f, -91.0f, 28.0f }, 0.0f, 1.0f },   // 56.59: centred (was -2); stern post (Miguel's numpad tuning, v1.0.7)
+			LampTune{ RE::NiPoint3{ 0.0f, 577.0f, 0.0f }, 0.0f, 0.85f } };  // 56.59: centred (was -2); bow tip (Miguel's numpad tuning, v1.0.7)
 		Prop g_lampProp[2] = {
 			Prop{ kLampSternForm, nullptr, {}, {}, 0.0f, 0, false, false, "LampStern" },
 			Prop{ kLampBowForm, nullptr, {}, {}, 0.0f, 0, false, false, "LampBow" } };
@@ -716,7 +716,7 @@ namespace BoatBow
 		// v1.0.14: the rower's bench, the same plank model as the helm bench. Its default is the helm bench's offset from
 		// the helm seat (right -2, forward 0, up +14 above where the seated body sits, turn 0) applied to the rower seat
 		// (right 0, forward 262, body at -80 facing the stern at 175 degrees): right -2, forward 262, up -66, turn 175.
-		PlankTune g_rowBench{ { 3.0f, 228.0f, -101.0f }, 3.14159265f, 0.65f };  // Part 15: Miguel's numpad values (v1.0.16 session)
+		PlankTune g_rowBench{ { 0.0f, 228.0f, -101.0f }, 3.14159265f, 0.65f };  // 56.59: centred (was right 3)  // Part 15: Miguel's numpad values (v1.0.16 session)
 		Prop g_rowBenchProp{ "00041EC7", nullptr, {}, {}, 0.0f, 0, true, false, "RowBench" };
 		OarTune g_oar[2] = {
 			OarTune{},
