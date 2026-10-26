@@ -20,3 +20,6 @@ Log 07:39 (face-the-rower OFF): the game had the orbit on by itself and swung fr
 the heading we set stayed steady (cY - fr == our heading). HoldOrbitAboard: aboard (any seat, third person) the orbit only moves on
 frames with PlayerControls lookInputVec (mouse / right stick); other changes are undone, a switched-off orbit is put back.
 Log: "Camera: orbit aboard ..., game swing undone ... rad, look input on N of M frames" every 2 s.
+
+## 56.58
+Face-the-rower back on ([Camera] FaceRower=1 default). CancelGameTurn retired.
