@@ -3665,7 +3665,7 @@ namespace
 		// the rowing seat, the third person camera is swung round once to face him (freeRotation.x = pi): W then moves the
 		// boat away from the camera. The mouse turns it freely afterwards. [Camera] FaceRower=0 turns it off.
 		bool faceRowerPending_{ false };
-		bool faceRowerOn_{ true };
+		bool faceRowerOn_{ false };  // 56.56: off by default
 
 		// 56.46: first person stays seated (no stand-up, no sneak crouch that followers copy). The game limits the look
 		// while its sit state is set, so that state is cleared while the view is first person and put back when it leaves.
@@ -3705,7 +3705,9 @@ namespace
 		{
 			if (!faceRowerLoaded_) {
 				faceRowerLoaded_ = true;
-				faceRowerOn_ = GetPrivateProfileIntA("Camera", "FaceRower", 1, FlowIniPath().c_str()) != 0;
+				// 56.56: pulled for this release (the free orbit it needs made the camera spin while rowing). Off unless the
+				// experimental key is set; the old FaceRower key is ignored so a saved FaceRower=1 does not bring it back.
+				faceRowerOn_ = GetPrivateProfileIntA("Camera", "FaceRowerExperimental", 0, FlowIniPath().c_str()) != 0;
 			}
 			if (!faceRowerOn_ || !a_cam || !a_cam->currentState || a_cam->currentState->id != RE::CameraState::kThirdPerson) { faceRowerPending_ = faceRowerOn_ && faceRowerPending_; return; }
 			auto* tps = static_cast<RE::ThirdPersonState*>(a_cam->currentState.get());
@@ -3775,6 +3777,11 @@ namespace
 		void ApplyPlayerBody(RE::PlayerCharacter* a_player)
 		{
 			if (!a_player) return;
+			if (!faceRowerLoaded_) {  // 56.56: read once up front (the pending flag needs it)
+				faceRowerLoaded_ = true;
+				faceRowerOn_ = GetPrivateProfileIntA("Camera", "FaceRowerExperimental", 0, FlowIniPath().c_str()) != 0;
+				logger::info("Camera: face-the-rower {}", faceRowerOn_ ? "on (experimental)" : "off (game camera)");
+			}
 			// The body is carried along by position, so its animation graph thinks it is walking when
 			// W is held (first person too: that is where the splashing wade footsteps came from).
 			// Keep the movement inputs at zero so the crouch idle plays.
@@ -3805,7 +3812,7 @@ namespace
 				// The seated body must not turn with the mouse: stop the animation graph rotating the actor too.
 				if (lockSeatedFacing_) a_player->SetGraphVariableBool("bAllowRotation", false);
 				RE::NiPoint3 ang = a_player->GetAngle();
-				if (playerOnRowSeat_ && headingSetHave_) CancelGameTurn(cam, ang.z - lastSetHeading_);  // 56.55
+				if (faceRowerOn_ && playerOnRowSeat_ && headingSetHave_) CancelGameTurn(cam, ang.z - lastSetHeading_);  // 56.55 (only with the experimental camera)
 				ang.x = 0.0f;
 				ang.z = skimHeading_ + playerSeatYaw_;
 				a_player->SetAngle(ang);

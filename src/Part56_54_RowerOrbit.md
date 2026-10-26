@@ -9,3 +9,8 @@ any other change is undone and a disabled orbit is re-enabled at the held value.
 The 56.54 lock let the spin through whenever mouse events arrived (log 06:34:44: orbit 3.2 -> 6.2 in 2 s). Real fix: the turn the
 game gives the actor (heading +k, orbit -k) is measured against our last SetAngle and given back to the orbit before the
 heading is reset (CancelGameTurn). HoldRowerOrbit now only re-enables an orbit the game switched off.
+
+## 56.56 pulled
+Still spun after 56.55. Face-the-rower is off for this release: [Camera] FaceRowerExperimental=1 brings it back (old FaceRower key
+ignored). With it off nothing touches the third person orbit (CancelGameTurn / HoldRowerOrbit gated too). Redo later via the
+camera hook instead of the free orbit.
