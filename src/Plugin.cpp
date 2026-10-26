@@ -3743,16 +3743,33 @@ namespace
 		{
 			if (!a_active || !faceRowerOn_ || !a_cam || !a_cam->currentState || a_cam->currentState->id != RE::CameraState::kThirdPerson) { orbitHave_ = false; return; }
 			auto* tps = static_cast<RE::ThirdPersonState*>(a_cam->currentState.get());
+			// 56.55: only a reset (orbit switched off, camera back behind) is undone here; the spin itself is cancelled where the
+			// heading is set (CancelGameTurn). Undoing every non-mouse change here fought that, and mouse events let the spin through.
 			const bool looking = std::chrono::steady_clock::now() - lookInputAt_ < std::chrono::milliseconds(150);
-			if (orbitHave_ && !looking) {
-				const bool drifted = !tps->freeRotationEnabled || std::fabs(tps->freeRotation.x - orbitX_) > 0.0005f;
-				if (drifted) {
-					if (orbitFixLogs_++ < 6) logger::info("Camera: orbit moved by the game ({} {:.3f} -> {:.3f}), held", tps->freeRotationEnabled ? "on" : "off", orbitX_, tps->freeRotation.x);
-					tps->freeRotationEnabled = true;
-					tps->freeRotation.x = orbitX_;
-				}
+			if (orbitHave_ && !looking && !tps->freeRotationEnabled) {
+				if (orbitFixLogs_++ < 6) logger::info("Camera: the game switched the orbit off ({:.3f}), put back", orbitX_);
+				tps->freeRotationEnabled = true;
+				tps->freeRotation.x = orbitX_;
 			}
 			if (tps->freeRotationEnabled) { orbitX_ = tps->freeRotation.x; orbitHave_ = true; }
+		}
+
+		// 56.55: the real cause of the spin. With the orbit on, the game turns the actor toward the camera (heading += k) and takes
+		// the same k off the orbit, so the camera stays put; we then put the heading back on the seat every frame, so the camera
+		// lost k each frame and spun. The turn the game made since our last SetAngle is given back to the orbit here.
+		bool headingSetHave_{ false };
+		float lastSetHeading_{ 0.0f };
+		int gameTurnLogs_{ 0 };
+		void CancelGameTurn(RE::PlayerCamera* a_cam, float a_turn)
+		{
+			while (a_turn > 3.14159265f) a_turn -= 6.2831853f;
+			while (a_turn < -3.14159265f) a_turn += 6.2831853f;
+			if (std::fabs(a_turn) < 1.0e-5f || !a_cam || !a_cam->currentState || a_cam->currentState->id != RE::CameraState::kThirdPerson) return;
+			auto* tps = static_cast<RE::ThirdPersonState*>(a_cam->currentState.get());
+			if (!tps->freeRotationEnabled) return;
+			tps->freeRotation.x += a_turn;
+			orbitX_ = tps->freeRotation.x;
+			if (gameTurnLogs_++ < 6) logger::info("Camera: the game turned the rower {:.4f} toward the camera, given back to the orbit (now {:.3f})", a_turn, tps->freeRotation.x);
 		}
 
 		void ApplyPlayerBody(RE::PlayerCharacter* a_player)
@@ -3777,6 +3794,7 @@ namespace
 			wasFirstPerson_ = firstPerson;
 			SetPlayerBodyHidden(a_player, firstPerson);
 			MaskSeatForFreeLook(a_player, firstPerson);
+			if (firstPerson || !playerOnRowSeat_) headingSetHave_ = false;  // 56.55: measure the game's turn from our own last SetAngle only
 			if (firstPerson) {
 				if (lockSeatedFacing_) a_player->SetGraphVariableBool("bAllowRotation", true);  // first person look turns the actor
 				return;
@@ -3787,9 +3805,12 @@ namespace
 				// The seated body must not turn with the mouse: stop the animation graph rotating the actor too.
 				if (lockSeatedFacing_) a_player->SetGraphVariableBool("bAllowRotation", false);
 				RE::NiPoint3 ang = a_player->GetAngle();
+				if (playerOnRowSeat_ && headingSetHave_) CancelGameTurn(cam, ang.z - lastSetHeading_);  // 56.55
 				ang.x = 0.0f;
 				ang.z = skimHeading_ + playerSeatYaw_;
 				a_player->SetAngle(ang);
+				lastSetHeading_ = ang.z;
+				headingSetHave_ = true;
 				return;
 			}
 			auto* root = a_player->Get3D(false);
@@ -7754,6 +7775,8 @@ namespace
 		bool StartPlayerSkim(const RE::NiPoint3& a_start, float a_heading, bool a_adopt)
 		{
 			if (playerSkim_) return false;
+			headingSetHave_ = false;  // 56.55
+			orbitHave_ = false;
 			auto* player = RE::PlayerCharacter::GetSingleton();
 			auto* cam = RE::PlayerCamera::GetSingleton();
 			if (!player || !cam) return false;
