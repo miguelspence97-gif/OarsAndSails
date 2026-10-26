@@ -5761,7 +5761,7 @@ namespace
 		// oas "num crew"   the human crew seats, one at a time (Num5 = next human)
 		// oas "num dog"    the dog seats, one at a time (Num5 = next dog, Num0 resets that dog)
 		// oas "num off"    numpad off again (also off at every game start). Benches and chest are not tunable any more.
-		enum class NumMode { kOff, kStow, kRower, kOars, kHeight, kNpcHeight, kCrew, kDogs, kFloor, kRipple };
+		enum class NumMode { kOff, kStow, kRower, kOars, kHeight, kNpcHeight, kCrew, kDogs, kFloor, kRipple, kSpeed };
 		int rippleSide_{ 0 };  // 56.37: which stern ripple oas "num ripple" moves (0 = left / port, 1 = right / starboard)
 		NumMode numMode_{ NumMode::kOff };
 		static constexpr int kDogSeats = 4;
@@ -5786,6 +5786,7 @@ namespace
 			case NumMode::kDogs: return "dog";
 			case NumMode::kFloor: return "floor";
 			case NumMode::kRipple: return "ripple";
+			case NumMode::kSpeed: return "speed";
 			default: return "off";
 			}
 		}
@@ -5821,7 +5822,7 @@ namespace
 		{
 			NumMode want = NumMode::kOff;
 			if (a_word.empty()) {
-				a_msg = std::format("numpad: {} (targets: stow, rower, oars, height, npc, crew, dog, floor, ripple, off)", NumModeName(numMode_));
+				a_msg = std::format("numpad: {} (targets: stow, rower, oars, height, npc, crew, dog, floor, ripple, speed, off)", NumModeName(numMode_));
 				return true;
 			}
 			if (a_word == "off") want = NumMode::kOff;
@@ -5833,8 +5834,9 @@ namespace
 			else if (a_word == "crew") want = NumMode::kCrew;
 			else if (a_word == "dog" || a_word == "dogs") want = NumMode::kDogs;
 			else if (a_word == "floor") want = NumMode::kFloor;
+			else if (a_word == "speed" || a_word == "row") want = NumMode::kSpeed;
 			else if (a_word == "ripple" || a_word == "ripples" || a_word == "wake") want = NumMode::kRipple;
-			else { a_msg = "num takes: stow, rower, oars, height, npc, crew, dog, floor, ripple, off"; return false; }
+			else { a_msg = "num takes: stow, rower, oars, height, npc, crew, dog, floor, ripple, speed, off"; return false; }
 			if (want == NumMode::kRower || want == NumMode::kOars) {
 				if (!playerSkim_ || !BoatBow::BakedOarsOn()) { a_msg = "rower / oars tuning: aboard, with [Boat] BakedOars=1"; return false; }
 			}
@@ -5850,6 +5852,7 @@ namespace
 			case NumMode::kHeight: RE::SendHUDMessage::ShowHUDMessage(std::format("BOAT HEIGHT {:+.0f}: Num9 / Num3 up-down, Num0 + Num9 reset", boatHeight_).c_str()); break;
 			case NumMode::kNpcHeight: LakeBoats::TuneRig(0, true); break;
 			case NumMode::kCrew: RE::SendHUDMessage::ShowHUDMessage("CREW SEATS: 8/2 forward-back, 4/6 left-right, 9/3 up-down, 7/1 turn. Num5 = next crew member"); break;
+			case NumMode::kSpeed: RE::SendHUDMessage::ShowHUDMessage("ROW SPEED: Num8 / Num2 top speed, Num9 / Num3 glide (less / more slowing between strokes), Num0 reset"); RowSpeedHud(); break;
 			case NumMode::kRipple: rippleSide_ = 0; RE::SendHUDMessage::ShowHUDMessage("STERN RIPPLE: 8/2 forward-back, 4/6 left-right, 9/3 up-down, Num0 reset. Num5 = the other one"); RippleSideHud(); break;
 			case NumMode::kFloor: RE::SendHUDMessage::ShowHUDMessage(std::format("FLOOR {:+.1f}: Num9 / Num3 up-down (0.5 a step), Num0 back to +3", BoatBow::FloorOffset()).c_str()); break;
 			case NumMode::kDogs: RE::SendHUDMessage::ShowHUDMessage("DOG SEATS: 8/2 forward-back, 4/6 left-right, 9/3 up-down, 7/1 turn, 0 reset. Num5 = next dog"); break;
@@ -5858,6 +5861,36 @@ namespace
 			logger::info("Numpad: target {} (oas num)", NumModeName(numMode_));
 			a_msg = std::format("numpad: {}", NumModeName(numMode_));
 			return true;
+		}
+
+		// 56.44: the row speed, tuned in game (oas "num speed" or oas "row speed N" / "row drag N"), kept in the ini
+		// [Row] MaxSpeed / Glide. The solo-rower boost (kLightBoatFactor) applies on top.
+		void SetRowSpeed(float a_max, float a_drag, const char* a_why, bool a_save = true)
+		{
+			rowProfile_.maxSpeed = std::clamp(std::round(a_max), 100.0f, 700.0f);
+			rowProfile_.coastDrag = std::clamp(std::round(a_drag * 100.0f) / 100.0f, 0.05f, 0.80f);
+			rowProfile_.accel = rowProfile_.maxSpeed * rowProfile_.coastDrag;
+			if (a_save) {
+				WritePrivateProfileStringA("Row", "MaxSpeed", std::format("{:.0f}", rowProfile_.maxSpeed).c_str(), FlowIniPath().c_str());
+				WritePrivateProfileStringA("Row", "Glide", std::format("{:.2f}", rowProfile_.coastDrag).c_str(), FlowIniPath().c_str());
+			}
+			logger::info("Row: top speed {:.0f}, glide drag {:.2f} ({})", rowProfile_.maxSpeed, rowProfile_.coastDrag, a_why);
+		}
+		void LoadRowSpeedIni()
+		{
+			char a[32]{}, b[32]{};
+			GetPrivateProfileStringA("Row", "MaxSpeed", "", a, sizeof(a), FlowIniPath().c_str());
+			GetPrivateProfileStringA("Row", "Glide", "", b, sizeof(b), FlowIniPath().c_str());
+			if (!a[0] && !b[0]) return;
+			float m = kRowMaxSpeed, d = kRowCoastDrag;
+			try { if (a[0]) m = std::stof(a); } catch (...) {}
+			try { if (b[0]) d = std::stof(b); } catch (...) {}
+			SetRowSpeed(m, d, "ini", false);
+		}
+		void RowSpeedHud()
+		{
+			const float pct = 100.0f * rowProfile_.maxSpeed / kRowMaxSpeed;
+			RE::SendHUDMessage::ShowHUDMessage(std::format("Row speed {:.0f} ({:.0f}% of default)   glide drag {:.2f} (default {:.2f})", rowProfile_.maxSpeed, pct, rowProfile_.coastDrag, kRowCoastDrag).c_str());
 		}
 
 		void RippleSideHud()
@@ -5892,6 +5925,22 @@ namespace
 				if (num0Held_ && a_key == 0x49) SetBoatHeight(kDefaultBoatHeight, "reset, Num0 + Num9");
 				else SetBoatHeight(boatHeight_ + (a_key == 0x49 ? 1.0f : -1.0f), "Num9/Num3");
 				return;
+			case NumMode::kSpeed: {
+				if (a_key != 0x48 && a_key != 0x50 && a_key != 0x49 && a_key != 0x51 && a_key != 0x52) return;
+				if (!NumStepReady()) return;
+				float maxS = rowProfile_.maxSpeed, drag = rowProfile_.coastDrag;
+				switch (a_key) {
+				case 0x48: maxS += 10.0f; break;   // Num8 faster
+				case 0x50: maxS -= 10.0f; break;   // Num2 slower
+				case 0x49: drag -= 0.01f; break;   // Num9 glides further (less slowing between strokes)
+				case 0x51: drag += 0.01f; break;   // Num3 slows more between strokes
+				case 0x52: maxS = kRowMaxSpeed; drag = kRowCoastDrag; break;  // Num0 defaults
+				default: break;
+				}
+				SetRowSpeed(maxS, drag, "numpad");
+				RowSpeedHud();
+				return;
+			}
 			case NumMode::kRipple: {
 				if (a_key == 0x4C) {  // Num5: the other stern ripple
 					static auto lastFlip = std::chrono::steady_clock::time_point{};
@@ -10478,11 +10527,9 @@ namespace
 					}
 					in >> value;
 					if (field == "speed" && value > 20.0f) {
-						ac.rowProfile_.maxSpeed = value;
-						ac.rowProfile_.accel = value * ac.rowProfile_.coastDrag;
+						ac.SetRowSpeed(value, ac.rowProfile_.coastDrag, "oas row speed");  // 56.44: kept in the ini
 					} else if (field == "drag" && value > 0.02f) {
-						ac.rowProfile_.coastDrag = value;
-						ac.rowProfile_.accel = ac.rowProfile_.maxSpeed * value;
+						ac.SetRowSpeed(ac.rowProfile_.maxSpeed, value, "oas row drag");
 					} else if (field == "brake" && value > 1.0f) {
 						ac.rowProfile_.brake = value;
 					} else if (field == "turn" && value > 0.05f) {
@@ -11226,6 +11273,7 @@ namespace
 		OarsAndSails::Get().LoadRowerIni();  // 56.5
 		OarsAndSails::Get().LoadBoatHeightIni();  // 56.26
 		OarsAndSails::Get().LoadDogSeatsIni();  // 56.29
+		OarsAndSails::Get().LoadRowSpeedIni();  // 56.44
 		BoatBow::BakedOarsOn();               // 56.5: logs the BakedOars switch and the baked oar tune
 		{ const auto& b = BoatBow::RowBench(); logger::info("RowBench default: right={:.0f} forward={:.0f} up={:.0f} yaw={:.0f} scale={:.2f}", b.offset.x, b.offset.y, b.offset.z, b.yaw * 57.2958f, b.scale); }
 	}
