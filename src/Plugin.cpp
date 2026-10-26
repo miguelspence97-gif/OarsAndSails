@@ -8535,6 +8535,195 @@ namespace
 			return fresh;
 		}
 
+		// ---- 56.51: docks. Boat spots placed by hand (oas "dock add"), shipped in OarsAndSails_Docks.ini. There is one boat in
+		// this mod (the parked boat), so a dock "calls" it: walk near a dock while your boat is somewhere far away and it is
+		// waiting at the dock, facing the way it was placed. A boat you left near you is never taken. ----
+		struct Dock { RE::FormID world{ 0 }; float x{ 0 }, y{ 0 }, z{ 0 }, yaw{ 0 }; std::string name; };
+		std::vector<Dock> docks_;
+		bool docksLoaded_{ false };
+		bool docksOn_{ true };
+		std::chrono::steady_clock::time_point dockTick_{};
+		int dockServed_{ -1 };  // the dock the boat was last brought to (not brought again until the player has left it)
+		static constexpr float kDockCallRange = 2500.0f;   // the player this close to a dock (and its cell loaded)
+		static constexpr float kDockOwnBoatRange = 3000.0f; // your boat this close to you: it stays where you left it
+		static constexpr float kDockAtSpot = 300.0f;        // the boat this close to the dock counts as there
+
+		static std::string DockIniPath()
+		{
+			std::string p = FlowIniPath();
+			const auto slash = p.find_last_of("\\/");
+			return (slash == std::string::npos ? std::string() : p.substr(0, slash + 1)) + "OarsAndSails_Docks.ini";
+		}
+
+		void LoadDocks()
+		{
+			docksLoaded_ = true;
+			docks_.clear();
+			const std::string path = DockIniPath();
+			docksOn_ = GetPrivateProfileIntA("Docks", "Enabled", 1, path.c_str()) != 0;
+			const int n = GetPrivateProfileIntA("Docks", "Count", 0, path.c_str());
+			for (int i = 1; i <= n; ++i) {
+				const std::string sec = std::format("Dock{}", i);
+				char w[32]{}, x[32]{}, y[32]{}, z[32]{}, a[32]{}, nm[128]{};
+				GetPrivateProfileStringA(sec.c_str(), "World", "", w, sizeof(w), path.c_str());
+				GetPrivateProfileStringA(sec.c_str(), "X", "", x, sizeof(x), path.c_str());
+				GetPrivateProfileStringA(sec.c_str(), "Y", "", y, sizeof(y), path.c_str());
+				GetPrivateProfileStringA(sec.c_str(), "Z", "", z, sizeof(z), path.c_str());
+				GetPrivateProfileStringA(sec.c_str(), "Yaw", "", a, sizeof(a), path.c_str());
+				GetPrivateProfileStringA(sec.c_str(), "Name", "", nm, sizeof(nm), path.c_str());
+				if (!w[0] || !x[0] || !y[0]) continue;
+				try {
+					Dock d;
+					d.world = static_cast<RE::FormID>(std::stoul(w, nullptr, 16));
+					d.x = std::stof(x); d.y = std::stof(y); d.z = z[0] ? std::stof(z) : 0.0f; d.yaw = a[0] ? std::stof(a) : 0.0f;
+					d.name = nm[0] ? nm : sec;
+					docks_.push_back(std::move(d));
+				} catch (...) { logger::warn("Docks: {} unreadable, skipped", sec); }
+			}
+			logger::info("Docks: {} loaded from {} ({})", docks_.size(), path, docksOn_ ? "on" : "off");
+		}
+
+		void SaveDocks()
+		{
+			const std::string path = DockIniPath();
+			// Old sections past the new count would linger: blank them first.
+			const int old = GetPrivateProfileIntA("Docks", "Count", 0, path.c_str());
+			for (int i = 1; i <= old; ++i) WritePrivateProfileStringA(std::format("Dock{}", i).c_str(), nullptr, nullptr, path.c_str());
+			WritePrivateProfileStringA("Docks", "Count", std::to_string(docks_.size()).c_str(), path.c_str());
+			WritePrivateProfileStringA("Docks", "Enabled", docksOn_ ? "1" : "0", path.c_str());
+			for (std::size_t i = 0; i < docks_.size(); ++i) {
+				const auto& d = docks_[i];
+				const std::string sec = std::format("Dock{}", i + 1);
+				WritePrivateProfileStringA(sec.c_str(), "Name", d.name.c_str(), path.c_str());
+				WritePrivateProfileStringA(sec.c_str(), "World", std::format("{:08X}", d.world).c_str(), path.c_str());
+				WritePrivateProfileStringA(sec.c_str(), "X", std::format("{:.1f}", d.x).c_str(), path.c_str());
+				WritePrivateProfileStringA(sec.c_str(), "Y", std::format("{:.1f}", d.y).c_str(), path.c_str());
+				WritePrivateProfileStringA(sec.c_str(), "Z", std::format("{:.1f}", d.z).c_str(), path.c_str());
+				WritePrivateProfileStringA(sec.c_str(), "Yaw", std::format("{:.4f}", d.yaw).c_str(), path.c_str());
+			}
+		}
+
+		static RE::FormID WorldOf(RE::PlayerCharacter* a_player)
+		{
+			auto* ws = a_player ? a_player->GetWorldspace() : nullptr;
+			return ws ? ws->GetFormID() : 0u;
+		}
+
+		// oas "dock ..." console text.
+		std::string DockCommand(const std::string& a_args)
+		{
+			if (!docksLoaded_) LoadDocks();
+			auto* player = RE::PlayerCharacter::GetSingleton();
+			if (!player) return "no player";
+			std::istringstream in(a_args);
+			std::string verb;
+			in >> verb;
+			std::string rest;
+			std::getline(in, rest);
+			while (!rest.empty() && rest.front() == ' ') rest.erase(rest.begin());
+			const RE::NiPoint3 pp = player->GetPosition();
+			const RE::FormID world = WorldOf(player);
+			auto nearest = [&](float& a_dist) {
+				int best = -1;
+				a_dist = 1e30f;
+				for (int i = 0; i < static_cast<int>(docks_.size()); ++i) {
+					const auto& d = docks_[i];
+					if (d.world != world) continue;
+					const float dd = std::hypot(d.x - pp.x, d.y - pp.y);
+					if (dd < a_dist) { a_dist = dd; best = i; }
+				}
+				return best;
+			};
+			if (verb == "add") {
+				if (playerSkim_) return "get off the boat first (the dock takes the parked boat's spot)";
+				if (!world) return "docks work outdoors only";
+				float bx = 0, by = 0, bz = 0, byaw = 0;
+				const bool have = BoatBow::GetParked(bx, by, bz, byaw) && std::hypot(bx - pp.x, by - pp.y) < 1500.0f;
+				if (!have) {
+					// No boat beside you: place one ahead (as oas boat does) and save that.
+					if (!SpawnParkedBoat() || !BoatBow::GetParked(bx, by, bz, byaw)) return "no boat near you and no loaded water ahead to place one";
+				}
+				Dock d{ world, bx, by, bz, byaw, rest.empty() ? std::format("Dock{}", docks_.size() + 1) : rest };
+				docks_.push_back(d);
+				SaveDocks();
+				dockServed_ = static_cast<int>(docks_.size()) - 1;
+				logger::info("Docks: added '{}' world {:08X} at ({:.0f}, {:.0f}, {:.0f}) facing {:.0f} deg", d.name, d.world, d.x, d.y, d.z, d.yaw * 57.2958f);
+				return std::format("dock {} '{}' saved where the boat is, facing {:.0f} deg ({} docks)", docks_.size(), d.name, d.yaw * 57.2958f, docks_.size());
+			}
+			if (verb == "del" || verb == "delete" || verb == "remove") {
+				float dist = 0;
+				const int i = nearest(dist);
+				if (i < 0 || dist > 2000.0f) return "no dock within 2000 of you";
+				const std::string name = docks_[i].name;
+				docks_.erase(docks_.begin() + i);
+				SaveDocks();
+				dockServed_ = -1;
+				logger::info("Docks: removed '{}'", name);
+				return std::format("dock '{}' removed ({} left)", name, docks_.size());
+			}
+			if (verb == "list" || verb.empty()) {
+				auto* console = RE::ConsoleLog::GetSingleton();
+				for (std::size_t i = 0; i < docks_.size(); ++i) {
+					const auto& d = docks_[i];
+					const std::string line = d.world == world ? std::format("  {} '{}' {:.0f} away, facing {:.0f} deg", i + 1, d.name, std::hypot(d.x - pp.x, d.y - pp.y), d.yaw * 57.2958f)
+					                                          : std::format("  {} '{}' (other worldspace {:08X})", i + 1, d.name, d.world);
+					if (console) console->Print(line.c_str());
+					logger::info("Docks:{}", line);
+				}
+				return std::format("{} docks, {} (file {})", docks_.size(), docksOn_ ? "on" : "off", DockIniPath());
+			}
+			if (verb == "on" || verb == "off") {
+				docksOn_ = verb == "on";
+				SaveDocks();
+				return std::format("docks {}", docksOn_ ? "on" : "off");
+			}
+			if (verb == "reload") { LoadDocks(); return std::format("{} docks reloaded", docks_.size()); }
+			return "usage: oas \"dock add <name>\" | \"dock del\" | \"dock list\" | \"dock on\" / \"dock off\" | \"dock reload\"";
+		}
+
+		// Once a second while not boating: bring the boat to a dock the player is near, unless their boat is near them already.
+		void TendDocks(RE::PlayerCharacter* a_player)
+		{
+			const auto now = std::chrono::steady_clock::now();
+			if (now - dockTick_ < std::chrono::seconds(1)) return;
+			dockTick_ = now;
+			if (!docksLoaded_) LoadDocks();
+			if (!docksOn_ || docks_.empty() || !a_player || savedPark_.valid) return;  // the save's own boat is resolved first
+			const RE::FormID world = WorldOf(a_player);
+			if (!world) return;
+			auto* cell = a_player->GetParentCell();
+			if (!cell || !cell->IsAttached()) return;
+			const RE::NiPoint3 pp = a_player->GetPosition();
+			int best = -1;
+			float bestD = kDockCallRange;
+			for (int i = 0; i < static_cast<int>(docks_.size()); ++i) {
+				const auto& d = docks_[i];
+				if (d.world != world) continue;
+				const float dd = std::hypot(d.x - pp.x, d.y - pp.y);
+				if (dd < bestD) { bestD = dd; best = i; }
+			}
+			if (best < 0) {
+				if (dockServed_ >= 0) {
+					const auto& d = docks_[dockServed_];
+					if (d.world != world || std::hypot(d.x - pp.x, d.y - pp.y) > kDockCallRange + 1500.0f) dockServed_ = -1;  // left it
+				}
+				return;
+			}
+			if (best == dockServed_) return;
+			const auto& d = docks_[best];
+			float bx = 0, by = 0, bz = 0, byaw = 0;
+			if (BoatBow::GetParked(bx, by, bz, byaw)) {
+				if (std::hypot(bx - d.x, by - d.y) < kDockAtSpot) { dockServed_ = best; return; }  // already there
+				if (std::hypot(bx - pp.x, by - pp.y) < kDockOwnBoatRange) { dockServed_ = best; return; }  // theirs, left nearby: keep it
+			}
+			float water = 0.0f;
+			const float z = SkimWaterAt(RE::NiPoint3{ d.x, d.y, d.z + 100.0f }, water) ? water + kParkedBoatZ + boatHeight_ : d.z;
+			if (BoatBow::SpawnParked(d.x, d.y, z, d.yaw)) {
+				dockServed_ = best;
+				logger::info("Docks: the boat is waiting at '{}' ({:.0f} from the player, facing {:.0f} deg)", d.name, bestD, d.yaw * 57.2958f);
+			}
+		}
+
 		// E: board the parked boat when close to it, or get off when skimming.
 		void HandleBoardingInput(RE::PlayerCharacter* a_player)
 		{
@@ -8543,6 +8732,7 @@ namespace
 				if (pressed) ExitPlayerSkim("Activate pressed");
 				return;
 			}
+			TendDocks(a_player);
 			float bx = 0.0f, by = 0.0f, bz = 0.0f, byaw = 0.0f;
 			if (!BoatBow::GetParked(bx, by, bz, byaw)) {
 				// After loading a save our in-memory boat is gone but the boat itself is still in
@@ -10534,6 +10724,7 @@ namespace
 						"oas \"num <target>\"   numpad tuning: speed height floor ripple stow rower oars crew dog npc off",
 						"oas \"row speed 300\" / \"row drag 0.25\" / \"row turn 0.45\"   oas \"floor 3\"   oas \"boat height 5\"",
 						"oas \"ripple wake 0.05\" / \"ripple oar 0.05\"   oas \"lakeboats off|on|<0-10>\"   oas \"reset settings\"",
+						"oas \"dock add <name>\" / \"dock del\" / \"dock list\" / \"dock on|off\"   boat spots: your boat waits at a dock you walk near",
 					};
 					for (const char* line : kHelp) {
 						logger::info("Help: {}", line);
@@ -11045,6 +11236,12 @@ namespace
 				// 51: lake boats (oas lakehere <name>, lakepoint <name>, lakes, lakedel <name>, lakeboats on|off|now|1|2|3)
 				if (auto lake = LakeBoats::Command(lower); !lake.empty()) {
 					if (console) console->Print("Oars and Sails: %s", lake.c_str());
+					return true;
+				}
+				if (lower == "dock" || lower == "docks" || lower.rfind("dock ", 0) == 0 || lower.rfind("docks ", 0) == 0) {
+					const auto sp = lower.find(' ');
+					const std::string text = OarsAndSails::Get().DockCommand(sp == std::string::npos ? std::string() : lower.substr(sp + 1));
+					if (console) console->Print(std::format("Oars and Sails: {}", text).c_str());
 					return true;
 				}
 				if (lower == "boat") {
