@@ -20,3 +20,4 @@ Miguel places boat spots around Skyrim so players don't need `oas boat`. Buying 
 `Data\SKSE\Plugins\OarsAndSails_Docks.ini`  ([Docks] Count/Enabled, [DockN] Name/World/X/Y/Z/Yaw). With MO2 new writes land in
 the overwrite folder: move it into the mod (and the release zip).
 Names are lowercase (the console line is lowercased).
+- Colour: each dock picks blue or beige from its name (same dock, same colour every time).

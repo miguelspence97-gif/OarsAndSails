@@ -8718,6 +8718,13 @@ namespace
 			}
 			float water = 0.0f;
 			const float z = SkimWaterAt(RE::NiPoint3{ d.x, d.y, d.z + 100.0f }, water) ? water + kParkedBoatZ + boatHeight_ : d.z;
+			{
+				// Each dock has its own colour (blue or beige), picked from its name so the same dock always shows the same boat.
+				std::uint32_t h = 2166136261u;
+				for (const char c : d.name) h = (h ^ static_cast<std::uint8_t>(c)) * 16777619u;
+				const int paint = (h & 1u) ? BoatBow::kPaintBeige : BoatBow::kPaintBlue;
+				if (BoatBow::Paint() != paint) BoatBow::SetPaint(paint, "dock colour");
+			}
 			if (BoatBow::SpawnParked(d.x, d.y, z, d.yaw)) {
 				dockServed_ = best;
 				logger::info("Docks: the boat is waiting at '{}' ({:.0f} from the player, facing {:.0f} deg)", d.name, bestD, d.yaw * 57.2958f);
