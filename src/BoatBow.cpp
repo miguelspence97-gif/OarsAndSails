@@ -4609,7 +4609,8 @@ namespace BoatBow
 		std::vector<RE::TESObjectREFR*> old;
 		tes->ForEachReferenceInRange(player, 9000.0f, [&](RE::TESObjectREFR* a_ref) {
 			if (a_ref && (a_ref->GetFormID() >> 24) == 0xFF && a_ref != parked.get() && !a_ref->IsDeleted() && IsOurBoatBase(a_ref->GetBaseObject()) && !IsLakeRef(a_ref)
-				&& !(g_cur.handle && g_cur.handle.get().get() == a_ref) && !(g_next.handle && g_next.handle.get().get() == a_ref)) old.push_back(a_ref);
+				&& !(g_cur.handle && g_cur.handle.get().get() == a_ref) && !(g_next.handle && g_next.handle.get().get() == a_ref)
+				&& !(g_leaving.handle && g_leaving.handle.get().get() == a_ref)) old.push_back(a_ref);  // 56.53: not the hand-off hull either
 			return RE::BSContainer::ForEachResult::kContinue;
 		});
 		for (auto* r : old) {

@@ -7877,6 +7877,7 @@ namespace
 			}
 			logger::info("Weapons: blocked draw while aboard (fighting controls off)");
 			BoatBow::SweepOrphans(true, "board");  // 43.4.3
+			BoatBow::CleanupOldBoats();  // 56.53: an old hull left in a cell that was unloaded when the boat moved (dock strays)
 			logger::info("Chest: {} (board)", BoatBow::ChestSummary());  // 43.4.5
 			// v1.0.14: Row on the rower's bench, or nobody else to row: the player rows. Otherwise (Steer, or Board with crew) an NPC rows.
 			const bool playerRows = boardChoice_ == BoardChoice::kRow || BoardedHumans().empty();
@@ -8543,7 +8544,8 @@ namespace
 		bool docksLoaded_{ false };
 		bool docksOn_{ true };
 		std::chrono::steady_clock::time_point dockTick_{};
-		int dockServed_{ -1 };  // the dock the boat was last brought to (not brought again until the player has left it)
+		int dockServed_{ -1 };
+		std::chrono::steady_clock::time_point dockSweepAt_{};  // the dock the boat was last brought to (not brought again until the player has left it)
 		static constexpr float kDockCallRange = 2500.0f;   // the player this close to a dock (and its cell loaded)
 		static constexpr float kDockOwnBoatRange = 3000.0f; // your boat this close to you: it stays where you left it
 		static constexpr float kDockAtSpot = 300.0f;        // the boat this close to the dock counts as there
@@ -8685,6 +8687,11 @@ namespace
 		void TendDocks(RE::PlayerCharacter* a_player)
 		{
 			const auto now = std::chrono::steady_clock::now();
+			if (dockSweepAt_ != std::chrono::steady_clock::time_point{} && now >= dockSweepAt_) {
+				dockSweepAt_ = {};
+				BoatBow::CleanupOldBoats();
+				BoatBow::SweepOrphans(true, "dock, again");
+			}
 			if (now - dockTick_ < std::chrono::seconds(1)) return;
 			dockTick_ = now;
 			if (!docksLoaded_) LoadDocks();
@@ -8729,6 +8736,11 @@ namespace
 			if (BoatBow::SpawnParked(d.x, d.y, z, d.yaw)) {
 				dockServed_ = best;
 				logger::info("Docks: the boat is waiting at '{}' ({:.0f} from the player, facing {:.0f} deg)", d.name, bestD, d.yaw * 57.2958f);
+				// 56.53: the old hull (and its bench / chest) removed while its cell was unloaded comes back with the cell and sat
+				// inside the dock boat. Sweep our old hulls and props around the player now, and once more a few seconds later.
+				BoatBow::CleanupOldBoats();
+				BoatBow::SweepOrphans(true, "dock");
+				dockSweepAt_ = std::chrono::steady_clock::now() + std::chrono::seconds(4);
 			}
 		}
 

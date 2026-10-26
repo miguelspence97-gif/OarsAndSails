@@ -21,3 +21,6 @@ Miguel places boat spots around Skyrim so players don't need `oas boat`. Buying 
 the overwrite folder: move it into the mod (and the release zip).
 Names are lowercase (the console line is lowercased).
 - Colour: each dock picks blue or beige from its name (same dock, same colour every time).
+- 56.53 strays: a hull removed while its cell was unloaded came back with the cell (no paint, own bench/crate) and sat
+  inside the dock boat. CleanupOldBoats (our FF hulls only, never vanilla) + prop sweep now run when the boat arrives at a
+  dock, again 4 s later, and on every board. The hand-off hull (g_leaving) is excluded.
