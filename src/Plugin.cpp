@@ -24,6 +24,7 @@
 
 #include "BoatBow.h"
 #include "LakeBoats.h"
+#include "TrueDirectionalMovementAPI.h"  // 56.43
 
 #undef PlaySound  // windows.h makes it PlaySoundA; RE::PlaySound is meant
 
@@ -4251,6 +4252,56 @@ namespace
 			LogTpsFields();  // reads animationRotation as the game left it, before the reset below
 			ResetAnimRotation(a_tps, "after ThirdPersonState::Update");
 			ForceFinalCamera("after ThirdPersonState::Update");
+		}
+
+		// ---- 56.43: other camera / movement mods ----
+		// True Directional Movement turns the player to face the movement input and, in its free camera, takes that turn
+		// back off ThirdPersonState::freeRotation so the view stays still. Aboard, ApplyPlayerBody puts the player's heading
+		// back on the seat every frame (with no matching freeRotation change), so while W is held for rowing each frame TDM
+		// turns, takes the turn off the camera, we undo the turn: the camera spins on and on. TDM also forces headtracking on
+		// every frame (the seated rower twists toward the camera). Its modder API (V1) pauses both: requested on boarding,
+		// released on leaving. Calls must be made on TDM's thread (the main thread), so it is done from the player update.
+		// SmoothCam is only detected and logged (its camera follows the player's heading like the game's own camera).
+		TDM_API::IVTDM1* tdm_{ nullptr };
+		bool compatLooked_{ false };
+		bool tdmHeld_{ false };
+		void TendModCompat(bool a_aboard)
+		{
+			if (!compatLooked_) {
+				compatLooked_ = true;
+				if (auto* mod = GetModuleHandleA("TrueDirectionalMovement.dll")) {
+					using RequestFn = void* (*)(TDM_API::InterfaceVersion);
+					if (auto fn = reinterpret_cast<RequestFn>(GetProcAddress(mod, "RequestPluginAPI"))) tdm_ = static_cast<TDM_API::IVTDM1*>(fn(TDM_API::InterfaceVersion::V1));
+					logger::info("Compat: True Directional Movement loaded, API {}", tdm_ ? "found (its directional movement and headtracking pause while aboard)" : "NOT found (an old TDM? the camera may spin while rowing)");
+				} else {
+					logger::info("Compat: True Directional Movement not loaded");
+				}
+				logger::info("Compat: SmoothCam {}", GetModuleHandleA("SmoothCam.dll") ? "loaded" : "not loaded");
+			}
+			if (!tdm_ || a_aboard == tdmHeld_) return;
+			if (GetCurrentThreadId() != tdm_->GetTDMThreadId()) return;  // not TDM's thread: next frame
+			const auto handle = SKSE::GetPluginHandle();
+			auto name = [](TDM_API::APIResult a_r) {
+				switch (a_r) {
+				case TDM_API::APIResult::OK: return "OK";
+				case TDM_API::APIResult::NotOwner: return "not owner";
+				case TDM_API::APIResult::MustKeep: return "TDM must keep it";
+				case TDM_API::APIResult::AlreadyGiven: return "already ours";
+				case TDM_API::APIResult::AlreadyTaken: return "held by another mod";
+				case TDM_API::APIResult::BadThread: return "wrong thread";
+				default: return "?";
+				}
+			};
+			if (a_aboard) {
+				const auto m = tdm_->RequestDisableDirectionalMovement(handle);
+				const auto h = tdm_->RequestDisableHeadtracking(handle);
+				logger::info("Compat: TDM paused for the ride (directional movement: {}, headtracking: {})", name(m), name(h));
+			} else {
+				const auto m = tdm_->ReleaseDisableDirectionalMovement(handle);
+				const auto h = tdm_->ReleaseDisableHeadtracking(handle);
+				logger::info("Compat: TDM given back (directional movement: {}, headtracking: {})", name(m), name(h));
+			}
+			tdmHeld_ = a_aboard;
 		}
 
 		void ReapplyBodyHide()
@@ -8604,6 +8655,7 @@ namespace
 				physicsDelay_ = -1.0f;
 				RunPhysicsCommand();
 			}
+			TendModCompat(playerSkim_);  // 56.43: TDM directional movement / headtracking paused while aboard
 			if (!playerSkim_) return;
 			if (a_player->IsDead()) {
 				ExitPlayerSkim("player died");
