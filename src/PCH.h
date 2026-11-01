@@ -1,4 +1,4 @@
-// Oars and Sails - rowboat SKSE plugin for Skyrim Special Edition / Anniversary Edition
+// RowRim - rowboat SKSE plugin for Skyrim Special Edition / Anniversary Edition
 // Copyright (C) 2026 Miguel32
 //
 // This program is free software: you can redistribute it and/or modify it under the terms of the

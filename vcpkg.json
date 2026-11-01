@@ -1,6 +1,6 @@
 {
     "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg/master/scripts/vcpkg.schema.json",
-    "name": "oarsandsails",
+    "name": "rowrim",
     "version-string": "1.0.0",
     "builtin-baseline": "4bc07e3eb00c5a9539a5a7a83415150a9260f8db",
     "dependencies": [

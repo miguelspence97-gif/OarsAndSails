@@ -9,10 +9,10 @@
         {
             "name": "_vcpkg",
             "hidden": true,
-            "toolchainFile": "${sourceDir}/lib/vcpkg/scripts/buildsystems/vcpkg.cmake",
+            "toolchainFile": "${sourceDir}/../OarsAndSails/lib/vcpkg/scripts/buildsystems/vcpkg.cmake",
             "cacheVariables": {
-                "VCPKG_OVERLAY_TRIPLETS":  "${sourceDir}/cmake/triplets",
-                "VCPKG_OVERLAY_PORTS":     "${sourceDir}/cmake/ports",
+                "VCPKG_OVERLAY_TRIPLETS":  "${sourceDir}/../OarsAndSails/cmake/triplets",
+                "VCPKG_OVERLAY_PORTS":     "${sourceDir}/../OarsAndSails/cmake/ports",
                 "VCPKG_MANIFEST_MODE":     "ON",
                 "VCPKG_INSTALL_OPTIONS":   "--allow-unsupported",
                 "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
@@ -31,7 +31,7 @@
             "hidden": true,
             "cacheVariables": {
                 "VCPKG_TARGET_TRIPLET":           "x64-llvm-mingw-static",
-                "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "${sourceDir}/cmake/toolchains/clang-cl-cross.cmake",
+                "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "${sourceDir}/../OarsAndSails/cmake/toolchains/clang-cl-cross.cmake",
                 "VCPKG_APPLOCAL_DEPS":            "OFF"
             }
         },

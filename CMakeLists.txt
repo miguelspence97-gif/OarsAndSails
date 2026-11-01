@@ -1,14 +1,17 @@
 cmake_minimum_required(VERSION 3.21)
 
 project(
-    OarsAndSails
+    RowRim
     VERSION 1.0.0
-    DESCRIPTION "Oars and Sails - rowboats for Skyrim SE/AE"
+    DESCRIPTION "RowRim - the rowboat as its own object"
     LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+
+# Reuses the CommonLibSSE-NG / vcpkg checkout from the OarsAndSails project next door.
+set(OAS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../OarsAndSails")
 
 option(PLUGIN_TESTS_ONLY "Build unit tests instead of the plugin" OFF)
 
@@ -30,9 +33,9 @@ if(PLUGIN_TESTS_ONLY)
 else()
 
     # Fail fast with an actionable message if the submodule wasn't checked out.
-    if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/lib/commonlibsse-ng/CMakeLists.txt")
-        message(FATAL_ERROR "lib/commonlibsse-ng is not checked out. Clone with --recurse-submodules, "
-                            "or run: git submodule update --init --recursive")
+    if(NOT EXISTS "${OAS_DIR}/lib/commonlibsse-ng/CMakeLists.txt")
+        message(FATAL_ERROR "../OarsAndSails/lib/commonlibsse-ng not found. "
+                            "This project shares the OarsAndSails checkout; keep both folders side by side")
     endif()
 
     # Dependencies
@@ -61,10 +64,10 @@ else()
         OFF
         CACHE BOOL "" FORCE)
 
-    add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/lib/commonlibsse-ng" "${CMAKE_CURRENT_BINARY_DIR}/commonlibsse-ng"
+    add_subdirectory("${OAS_DIR}/lib/commonlibsse-ng" "${CMAKE_CURRENT_BINARY_DIR}/commonlibsse-ng"
                      EXCLUDE_FROM_ALL)
 
-    include("${CMAKE_CURRENT_SOURCE_DIR}/lib/commonlibsse-ng/cmake/CommonLibSSE.cmake")
+    include("${OAS_DIR}/lib/commonlibsse-ng/cmake/CommonLibSSE.cmake")
 
     file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/src")
     configure_file("${CMAKE_CURRENT_SOURCE_DIR}/cmake/version.rc.in" "${CMAKE_CURRENT_BINARY_DIR}/src/version.rc" @ONLY)
@@ -73,13 +76,11 @@ else()
     add_commonlibsse_plugin(
         ${PROJECT_NAME}
         NAME
-        "OarsAndSails"
+        "RowRim"
         AUTHOR
-        "Oars and Sails"
+        "Miguel"
         SOURCES
         src/Plugin.cpp
-        src/BoatBow.cpp
-        src/LakeBoats.cpp
         "${CMAKE_CURRENT_BINARY_DIR}/src/version.rc"
         USE_ADDRESS_LIBRARY)
 
@@ -101,7 +102,7 @@ else()
 
     set_target_properties(
         ${PROJECT_NAME}
-        PROPERTIES OUTPUT_NAME OarsAndSails
+        PROPERTIES OUTPUT_NAME RowRim
                    PREFIX ""
                    SUFFIX ".dll")
 

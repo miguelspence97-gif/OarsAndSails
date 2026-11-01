@@ -1,5 +1,18 @@
 build/
 dist/
-logs/
-backups/
+nifs/
+blender/
 *.pdb
+OarsAndSails.ini
+# v1.7.40: source images and textures the release does not use
+*.jpg
+*.png
+Data/textures/RowRim/boat_tent_d.dds
+Data/textures/RowRim/boat_tent_n.dds
+Data/textures/RowRim/boat_tentpole_d.dds
+Data/textures/RowRim/boat_canvas_d.dds
+Data/textures/RowRim/boat_canvas_n.dds
+Data/textures/RowRim/boat_bench_d.dds
+Data/textures/RowRim/fishbone_d.dds
+# the hull is built on the vanilla rowboat mesh: shipped in the Nexus zip, not in the repo
+Data/meshes/RowRim/RowRim_Hull.nif

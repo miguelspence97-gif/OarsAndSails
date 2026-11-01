@@ -1,0 +1,5 @@
+' RowRim: the rowing loop (from Oars and Sails). Nemesis and Pandora read this FNIS-style list and add the idle to the behaviours.
+' b = basic idle (cyclic). The event to start it is the alias, OarsRowStart; IdleForceDefaultState ends it.
+Version V1.0.26
+
+b OarsRowStart RowboatRow_Loopv3.hkx
