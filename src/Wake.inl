@@ -32,6 +32,181 @@ namespace Wake
 		RE::NiPointer<RE::NiNode> node;
 		RE::BSEffectShaderMaterial* mat = nullptr;
 	};
+	// v1.7.43: the boat's own ripples in the water, as the oars make them (the game's ripples): one source at the tiller
+	// (rudder) and the hull's body (the stem and both sides along the waterline); often while moving or turning, now and
+	// then at rest as she bobs. Tuned with oas "num stern" (RowRim.ini [Wake] SternY = the tiller's place, SternSpread =
+	// how far apart along the water while moving, SternZ = up / down, SternSize = the tiller's ripple size, SternStrength =
+	// the hull's ripple size; 0 turns that source off). Drawn by TestHull::TendHullRipples.
+	struct Stern
+	{
+		float y = -318.0f, spread = 22.0f, z = 0.0f, size = 1.0f, strength = 1.0f;
+		bool loaded = false;
+	};
+	inline Stern g_stern;
+	inline void LoadStern()
+	{
+		if (g_stern.loaded) return;
+		g_stern.loaded = true;
+		const auto ini = Plankton::IniPath();
+		auto f = [&](const char* a_k, float a_def) {
+			char b[32]{};
+			GetPrivateProfileStringA("Wake", a_k, "", b, sizeof(b), ini.c_str());
+			try { return b[0] ? std::stof(b) : a_def; } catch (...) { return a_def; }
+		};
+		g_stern.y = f("SternY", g_stern.y);
+		g_stern.spread = f("SternSpread", g_stern.spread);
+		g_stern.z = f("SternZ", g_stern.z);
+		g_stern.size = f("SternSize", g_stern.size);
+		g_stern.strength = f("SternStrength", g_stern.strength);
+	}
+	inline void SaveStern()
+	{
+		const auto ini = Plankton::IniPath();
+		auto w = [&](const char* a_k, float a_v) { WritePrivateProfileStringA("Wake", a_k, std::format("{:.2f}", a_v).c_str(), ini.c_str()); };
+		w("SternY", g_stern.y);
+		w("SternSpread", g_stern.spread);
+		w("SternZ", g_stern.z);
+		w("SternSize", g_stern.size);
+		w("SternStrength", g_stern.strength);
+	}
+	// v1.7.44: the hull's ripples get their own settings and numpad (oas "num hull"); "num stern" is the tiller only
+	struct Hull
+	{
+		float size = 0.6f;    // ripple size (x the base)
+		float out = 3.0f;     // how far outside the hull's side
+		float every = 35.0f;  // travel between ripples at each spot (bigger = fewer)
+		float z = 0.0f;       // up / down
+		int count = 3;        // spots along each side (0-8), spread evenly from the bow thwart to the aft thwart
+		bool stem = true;     // a ripple off the stem too
+		bool rest = false;    // the odd ripple at rest
+		bool loaded = false;
+	};
+	inline Hull g_hull;
+	inline void LoadHull()
+	{
+		if (g_hull.loaded) return;
+		g_hull.loaded = true;
+		const auto ini = Plankton::IniPath();
+		auto f = [&](const char* a_k, float a_def) {
+			char b[32]{};
+			GetPrivateProfileStringA("Wake", a_k, "", b, sizeof(b), ini.c_str());
+			try { return b[0] ? std::stof(b) : a_def; } catch (...) { return a_def; }
+		};
+		g_hull.size = f("HullSize", g_hull.size);
+		g_hull.out = f("HullOut", g_hull.out);
+		g_hull.every = f("HullEvery", g_hull.every);
+		g_hull.z = f("HullZ", g_hull.z);
+		g_hull.count = std::clamp(static_cast<int>(f("HullCount", static_cast<float>(g_hull.count))), 0, 8);
+		g_hull.stem = f("HullStem", g_hull.stem ? 1.0f : 0.0f) != 0.0f;
+		g_hull.rest = f("HullRest", g_hull.rest ? 1.0f : 0.0f) != 0.0f;
+	}
+	inline void SaveHull()
+	{
+		const auto ini = Plankton::IniPath();
+		auto w = [&](const char* a_k, const std::string& a_v) { WritePrivateProfileStringA("Wake", a_k, a_v.c_str(), ini.c_str()); };
+		w("HullSize", std::format("{:.2f}", g_hull.size));
+		w("HullOut", std::format("{:.1f}", g_hull.out));
+		w("HullEvery", std::format("{:.0f}", g_hull.every));
+		w("HullZ", std::format("{:.1f}", g_hull.z));
+		w("HullCount", std::to_string(g_hull.count));
+		w("HullStem", g_hull.stem ? "1" : "0");
+		w("HullRest", g_hull.rest ? "1" : "0");
+	}
+
+	// the numpad: oas "num stern" (the tiller) or oas "num hull"; saved when a key is let go
+	inline int g_mode = 0;  // 0 off, 1 tiller, 2 hull
+	inline bool g_held[16]{};
+	inline bool g_dirty = false;
+	inline float g_hudT = 0.0f;
+	inline int NumSlot(std::uint32_t a_id)
+	{
+		switch (a_id) {
+		case 0x48: return 8; case 0x50: return 2; case 0x4B: return 4; case 0x4D: return 6;
+		case 0x49: return 9; case 0x51: return 3; case 0x47: return 7; case 0x4F: return 1;
+		case 0x4A: return 10; case 0x4E: return 11; case 0x52: return 0; case 0x53: return 12;
+		default: return -1;
+		}
+	}
+	inline bool NumOn() { return g_mode != 0; }
+	inline void SaveMode()
+	{
+		if (!g_dirty) return;
+		if (g_mode == 1) SaveStern();
+		if (g_mode == 2) SaveHull();
+		g_dirty = false;
+	}
+	inline std::string TillerText()
+	{
+		return std::format("tiller ripples: at {:.0f}, apart {:.0f}, height {:.1f}, size x{:.2f}", g_stern.y, g_stern.spread, g_stern.z, g_stern.size);
+	}
+	inline std::string HullText()
+	{
+		return std::format("hull ripples: size x{:.2f}, out {:.0f}, every {:.0f}, height {:.1f}, {} spots a side, stem {}, at rest {}", g_hull.size, g_hull.out,
+			g_hull.every, g_hull.z, g_hull.count, g_hull.stem ? "on" : "off", g_hull.rest ? "on" : "off");
+	}
+	// a_mode 1 tiller, 2 hull, 0 off
+	inline std::string NumCommand(int a_mode)
+	{
+		LoadStern();
+		LoadHull();
+		SaveMode();
+		g_mode = a_mode;
+		for (auto& h : g_held) h = false;
+		if (a_mode == 1) return "numpad: " + TillerText() + ". 8/2 aft/forward, 4/6 closer/further apart, 9/3 up/down, 7/1 smaller/bigger (0 = off); oas \"num stern\" again to stop";
+		if (a_mode == 2) return "numpad: " + HullText() + ". 7/1 smaller/bigger (0 = off), 4/6 closer to / further from the hull, 8/2 fewer/more often, 9/3 up/down, Num-/Num+ fewer/more spots, Num0 stem on/off, Num. at rest on/off; oas \"num hull\" again to stop";
+		return "boat ripples numpad off";
+	}
+	inline void NumKey(std::uint32_t a_id, bool a_pressed)
+	{
+		if (!g_mode) return;
+		const int k = NumSlot(a_id);
+		if (k < 0) return;
+		const bool was = g_held[k];
+		g_held[k] = a_pressed;
+		if (g_mode == 2 && a_pressed && !was) {  // steps and switches on the press
+			bool changed = true;
+			if (k == 10) g_hull.count = (std::max)(0, g_hull.count - 1);
+			else if (k == 11) g_hull.count = (std::min)(8, g_hull.count + 1);
+			else if (k == 0) g_hull.stem = !g_hull.stem;
+			else if (k == 12) g_hull.rest = !g_hull.rest;
+			else changed = false;
+			if (changed) { g_dirty = true; RE::SendHUDMessage::ShowHUDMessage(HullText().c_str()); }
+		}
+		if (was && !a_pressed) SaveMode();
+	}
+	inline void TendNum(float a_dt)
+	{
+		if (!g_mode) return;
+		bool changed = false;
+		auto step = [&](float& a_v, int a_down, int a_up, float a_rate, float a_lo, float a_hi) {
+			const float b = a_v;
+			if (g_held[a_down]) a_v -= a_rate * a_dt;
+			if (g_held[a_up]) a_v += a_rate * a_dt;
+			a_v = std::clamp(a_v, a_lo, a_hi);
+			if (a_v != b) changed = true;
+		};
+		if (g_mode == 1) {
+			auto& s = g_stern;
+			step(s.y, 8, 2, 15.0f, -400.0f, -150.0f);
+			step(s.spread, 4, 6, 15.0f, 6.0f, 150.0f);
+			step(s.z, 3, 9, 3.0f, -10.0f, 10.0f);
+			step(s.size, 7, 1, 0.4f, 0.0f, 3.0f);
+		} else {
+			auto& h = g_hull;
+			step(h.size, 7, 1, 0.3f, 0.0f, 3.0f);
+			step(h.out, 4, 6, 6.0f, -5.0f, 40.0f);
+			step(h.every, 2, 8, 20.0f, 8.0f, 300.0f);
+			step(h.z, 3, 9, 3.0f, -10.0f, 10.0f);
+		}
+		if (changed) {
+			g_dirty = true;
+			if ((g_hudT -= a_dt) <= 0.0f) {
+				g_hudT = 0.2f;
+				RE::SendHUDMessage::ShowHUDMessage((g_mode == 1 ? TillerText() : HullText()).c_str());
+			}
+		}
+	}
+
 	struct State
 	{
 		RE::NiPointer<RE::NiNode> src[2];

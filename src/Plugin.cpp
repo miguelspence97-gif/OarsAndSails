@@ -31,6 +31,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdlib>
 #include <cstring>
 #include <cmath>
 #include <chrono>
@@ -49,10 +50,108 @@
 
 #include <xmmintrin.h>
 
+// Defaults baked from the supplied RowRim.ini. Keep this before the .inl includes:
+// their existing Win32 INI readers use these fallbacks too. A real INI value always
+// wins; writes and in-game tuning are unchanged. Other INI files are unaffected.
+namespace RowRimBakedIni
+{
+	struct Entry { const char* section; const char* key; const char* value; };
+	inline constexpr Entry kDefaults[] = {
+		{ "Longboat", "Handling", "2" },
+		{ "Boat", "BakedTuneReset", "68" },
+		{ "Rower", "PlayerRight", "-2" },
+		{ "Rower", "PlayerForward", "247" },
+		{ "Rower", "PlayerUp", "22" },
+		{ "Rower", "PlayerYaw", "180" },
+		{ "LakeBoats", "On", "1" },
+		{ "LakeBoats", "Count", "3" },
+		{ "LakeBoats", "View", "5" },
+		{ "LakeBoats", "Defaults", "2" },
+		{ "Plankton", "On", "1" },
+		{ "Plankton", "Force", "0" },
+		{ "Plankton", "Density", "3.00" },
+		{ "Plankton", "Size", "0.40" },
+		{ "Plankton", "Open", "600" },
+		{ "Plankton", "OpenSize", "1.00" },
+		{ "Plankton", "OpenCount", "2000" },
+		{ "Plankton", "Shore", "400" },
+		{ "CrewSeats", "Seat1", "-7.3 -3.8 -3.8 -175.0" },
+		{ "CrewSeats", "Seat2", "9.8 -2.0 -4.3 -175.1" },
+		{ "CrewSeats", "Seat3", "-8.1 -4.3 -3.3 -180.5" },
+		{ "CrewSeats", "Seat4", "4.0 0.0 -2.8 -166.6" },
+		{ "CrewSeats", "Seat0", "8.3 -7.1 -4.5 0.0" },
+		{ "Controls", "PadZoom", "1" },
+		{ "Controls", "PadZoomSpeed", "1.2" },
+		{ "Row", "MaxSpeed", "300" },
+		{ "Row", "Glide", "0.070" },
+		{ "Row", "Turn", "1.00" },
+		{ "Clutter", "Bedroll", "0" },
+		{ "Clutter", "BedrollX", "1.5" },
+		{ "Clutter", "BedrollY", "70.9" },
+		{ "Clutter", "BedrollZ", "41.3" },
+		{ "Clutter", "BedrollYaw", "-90.0" },
+		{ "Clutter", "SuppliesX", "-49.3" },
+		{ "Clutter", "SuppliesY", "-148.2" },
+		{ "Clutter", "SuppliesZ", "40.3" },
+		{ "Clutter", "SuppliesYaw", "-45.4" },
+		{ "Camera", "BoatCam", "0" },
+		{ "Debug", "CellGrid", "0" },
+		{ "Crew", "StandUpAt", "400" },
+		{ "Wake", "HullSize", "0.00" },
+		{ "Wake", "HullOut", "31.1" },
+		{ "Wake", "HullEvery", "107" },
+		{ "Wake", "HullZ", "0.0" },
+		{ "Wake", "HullCount", "3" },
+		{ "Wake", "HullStem", "1" },
+		{ "Wake", "HullRest", "0" },
+		{ "Wake", "SternY", "-150.00" },
+		{ "Wake", "SternSpread", "6.00" },
+		{ "Wake", "SternZ", "0.00" },
+		{ "Wake", "SternSize", "1.00" },
+		{ "Wake", "SternStrength", "1.00" },
+	};
+
+	inline bool EqualI(const char* a, const char* b)
+	{
+		if (!a || !b) return false;
+		while (*a && *b) {
+			if (std::tolower(static_cast<unsigned char>(*a++)) !=
+				std::tolower(static_cast<unsigned char>(*b++))) return false;
+		}
+		return *a == *b;
+	}
+	inline const char* Find(const char* section, const char* key, const char* path)
+	{
+		if (!section || !key || !path) return nullptr; // Preserve Win32 enumeration.
+		const char* name = path;
+		for (const char* p = path; *p; ++p) if (*p == '/' || *p == '\\') name = p + 1;
+		if (!EqualI(name, "RowRim.ini")) return nullptr;
+		for (const auto& e : kDefaults)
+			if (EqualI(section, e.section) && EqualI(key, e.key)) return e.value;
+		return nullptr;
+	}
+	inline DWORD WINAPI ReadString(LPCSTR section, LPCSTR key, LPCSTR fallback,
+		LPSTR buffer, DWORD size, LPCSTR path)
+	{
+		const char* baked = Find(section, key, path);
+		return ::GetPrivateProfileStringA(section, key, baked ? baked : fallback, buffer, size, path);
+	}
+	inline UINT WINAPI ReadInt(LPCSTR section, LPCSTR key, INT fallback, LPCSTR path)
+	{
+		const char* baked = Find(section, key, path);
+		const INT value = baked ? static_cast<INT>(std::strtol(baked, nullptr, 10)) : fallback;
+		return ::GetPrivateProfileIntA(section, key, value, path);
+	}
+}
+
+// Translation-unit-local redirection, including the existing .inl modules.
+#define GetPrivateProfileStringA RowRimBakedIni::ReadString
+#define GetPrivateProfileIntA RowRimBakedIni::ReadInt
+
 namespace
 {
-	constexpr const char* kVersionShort = "v1.7.40";
-	constexpr const char* kVersion = "v1.7.40 (dismissed dogs (Meeko sent home stays your teammate in the game) never board or stay seated: a dog must be in the follower faction; the fishing supplies at 0.5; the tent and its stowed tarp and poles off for this release, the bedroll slung in leather and the lantern by the bed stay); v1.7.39 (only followers the game counts as your teammates board: dismissed Meeko stays off the boat); v1.7.38 (dismissed followers (Meeko too) are never taken aboard again, and one dismissed while aboard gets off the seat; deleting the boat takes the fishing supplies and the bed with it); v1.7.37 (the tent has its own textures (its fade had faded the rod, the stowed poles and the stowed tarp, which share them, to nothing); the tent draws solid once up, kept 4 clear of the wood; the spare oar removed); v1.7.36 (stowed: the tarp rolled and the bedroll (moved to starboard) slung under the bow thwart in leather straps, the tent poles bundled with rope along the port side forward, the spare oar flat against the port side under the thwarts; with the bed out the shipped oars lie aft of the tent (one lay through it) and the dog sits at the stern facing aft); v1.7.35 (the bed lantern under the bow thwart, clear of the bed; the dog lies down at its seat after a while (it was stood back up whenever it lay down); the tarp over the thwart knees and the bow rope too); v1.7.34 (the bed tent redone: a square way in on two posts up the hull sides and a crossbar (nothing over the bed), grey canvas over eave and ridge poles to the stem head, smooth over the gunwales and oarlocks; it fades in and out over 1.5 s with the bed, the bed too; a lit lantern on the floor by the bed); v1.7.33 (with the bed laid out the oars lie along the gunwales in the middle and aft oarlocks; the tarp goes over the gunwales, rails and oarlocks); v1.7.32 (a canvas tarp tent over the bow while the bedroll is laid out: from the stem head aft over the bed on a ridge pole and two A-frames of skinny poles, no collision); v1.7.31 (standing up from the oars or the helm stops the row animation on the crew rower too (they were left rowing), and sends the stop again over the next second (E right as a stroke started could leave it playing); v1.7.30 (E straight on the fishing supplies goes through the boat's fishing too (marker, open water), never the bare one that turned you to the floor and left you stuck fishing; their prompt only close and standing); v1.7.29 (passengers get up and follow at 400 from the boat (about 6 m; RowRim.ini [Crew] StandUpAt); the fishing supplies placed 3 s after a load, and placed again if their 3D is not in the scene (unseen after a load); v1.7.28 (followers and the dog stay seated when you leave the oars or the helm, also when you step off the boat, until you walk 600 away, then get up and follow; the fishing and bedroll prompts only show up close (90); a fresh fishing marker each time (catches not shown after moving spots); the bedroll at 0.9); v1.7.27 (fishing: the marker is the fisher's standing spot (the fishing moves you onto it): on the floorboards where you stand, facing out over the side, so the rod is in your hands and reeling works; open water checked out to 450; the fishing supplies drawn right after a load); v1.7.26 (fishing from the boat: the fishing's own move of the player (into the water beside the boat) is undone, you stay where you stood on the deck); v1.7.25 (a drawn weapon or spell is put away before you sit at the oars or the helm, the sit waits for it (the camera broke when sitting with it out); the fishing marker on the boat's water, not 14000 down (you were taken underwater), and only on open water: land, shallows or something in the way off that side say so on the HUD); v1.7.24 (fishing from the boat: the supplies are linked to a fishing marker placed on the water off the side you face, as the Creation Club ones are (the cast went nowhere and left you stuck fishing); no fishing prompt or fishing while seated, only standing); v1.7.23 (E standing in the boat no longer sits you down: only the seat prompts do (pick up what you dropped in the boat again); the fishing supplies have their own prompt (Fish), also from the seat (you stand up and fish)); v1.7.22 (seated: your weapon sheathed and your shield taken off (back on when you stand), passengers sheathe theirs (still equipped) and take shields off too; no [E] Talk while seated and no dialogue opened by the E that sits you down or stands you up; E on the fishing supplies from the seat stands you up and starts fishing); v1.7.21 (soft collision: the bow eases to a stop at jetties, docks, longboats, wood and boulders (0.25-0.8 s, begun early enough), small rocks only bump the keel; the fishing supplies no longer fade at cell edges; passengers and the dog stay seated after you stand up until the boat settles, then stand clear of the hull (no dog thrown); fishing supplies found by the plugin's load index; the bedroll no longer respawned every frame at a cell edge; sitting down rolls the bedroll up for good (no more laying itself out when you stand or leave the boat); saved and stray beds removed after a load even with no boat out, strays over the water or by the boat swept for 30 s); v1.7.20 (oas \"grid on|off\": faint see-through walls on the world cell edges round you, your own cell brightest, the cell shown on the HUD as you cross); v1.7.19 (the rower guard never takes an engine late frame as a real move (the jump at row stop); the boat camera tried and removed); v1.7.18 (the rower steadied on the boat before the game builds the third person camera from him, so the camera no longer shakes when the engine leaves him a frame behind; motion log reads the camera as drawn); v1.7.17 (the third person camera steadied where the game really reads it (GetTranslation): no shake when the engine leaves the rower a frame behind while rowing, no pull-in on cell hops; the rower takes row start/stop at once); v1.7.16 (motion log: the rower's pelvis, head and Camera3rd bone on the drawn boat, kinks flagged BONE); v1.7.15 (the hull's collision model, reloaded on a cell hop, hidden right before the draw too; motion log checks the drawn camera); v1.7.14 (seat guard: the rower and the third person camera held steady on the drawn boat: no 1-unit hiccup every ~1.7 s, no camera pull-in on cell hops; oas \"seatguard on|off\"); v1.7.13 (oas \"motionlog [seconds]\": a frame-by-frame log of the boat and the third person camera in RowRim_Motion.log); v1.7.12 (True Directional Movement paused while seated (its turn-toward-input wound the third person camera up until it could no longer look up or down); the orbit fix-up compares angles, never hundreds of radians; dog followers from any canine race and every current follower board); v1.7.11 (E on the bedroll rolled under the bow thwart (Unroll Bedroll) lays the game's own bedroll in the boat to sleep in, for good (oas \"bedroll roll\" to put it away); oas \"num gear\": the numpad places the bedroll and the fishing supplies (Num5 picks which), saved in [Clutter]); v1.7.10 (waterfalls and ledges as in the old Oars and Sails: row over a lip and the boat flies on with its speed, the bow dipping, and lands in the water below with a slap and a dip, or on the ground; no pull or throw; the hull feelers stay quiet with a fall ahead); v1.7.9 (look-at prompts: [E] Board Rowboat on the hull from the water, under it or beside it (you land standing on the floorboards), [E] Steer Helm on the stern seat, [E] Row Oars on the middle thwart, through invisible activators from OarsAndSails.esl; with followers aboard and you at the stern, one of them (never the dog) is picked at random to row: W/S/A/D steer them, the oars follow their hands; a 13th boat spot at Dawnstar); v1.7.8 (the Oars and Sails update: console command oas again (rr still works); boat spots: your boat waits at the docks in RowRim_Docks.ini, oas \"dock add <name>\"; old Oars and Sails boats in a save are cleared away (their chest's contents given to you) and OarsAndSails.esl stays as an obsolete stub; plankton rides the current in rivers and rapids; 3 NPC boats a lake by default; no ghosts, necromancers or templated NPCs rowing the lake boats, robed ones change into plain, fur or hide clothes; rowing speed, glide and turning saved in RowRim.ini [Row] (taken over from OarsAndSails.ini once), oas \"row turn N\"; controller: the mapped Activate button always works seated, R3 + left stick or L3 + right stick zooms ([Controls]); oas help, status, \"reset settings\"); v1.7.7 (no more \"Ride Horse\" on the hidden carrier: its activate text and activation refused through the horse base's vtable; clutter meshes fixed (each piece its own shader property), placeholder textures, keg out, rod in a holder on the hull side, fish bones sprite in the hull); v1.7.0 (boat clutter: a bucket, a spare oar under the thwarts, an ale keg under the aft thwart, a bedroll tied under the bow thwart, a fishing rod trolling off the stern, fish bones by the rope; usable Fishing Supplies (Creation Club Fishing) left of the stern seat, [Clutter]); v1.6.6 (rowing off from rest the boat and passengers drop back only a sliver (drawn 0.7 of the way to this frame, rr \"lead N\"); the player's foot IK held off at the camera update too; a hang watchdog writes our last step to the log); v1.6.5 (seated feet no longer jump up: foot IK off while seated for the player, passengers and lake boat crew); v1.6.4 (passengers drawn on their seats on the boat as drawn (no more sliding off it while rowing); lake boat crew from a save removed after the load (their Fisherman name is not saved, so they were kept and sat on the water while new crew rowed off): the co-save keeps each part with its base); v1.6.3 (crew sit only when not seated (OAS: seated state from their animation events), no more flicker and jumps; standing floor raised 2.5 onto the floorboards; crew seats 5 higher, feet on the boards); v1.6.2 (one dog only, in the OAS dog seat in the bow, facing forward, leaning with the boat, OAS sit control); v1.6.1 (seated player and crew moved with the boat as OAS did (glued each frame, the boat drawn one frame behind), no longer pinned onto the hull; rr \"draw pin\" for the old way); v1.6.0 (crew and passengers from OAS: followers and rr \"crew add\" NPCs board with you on the thwarts (dogs on the floor), late arrivals hop in, rr crew remove|clear|list|summon; rr num: numpad seat tuning, Num5 picks who); v1.5.19 (the stern trail stronger and paler, easy to see again); v1.5.18 (wake: the V is off for now; the stern trail as wide as the hull from the start); v1.5.17 (wake: the V a faint grey-green sheen, the stern trail round foam patches each turned and sized its own way so it never repeats); v1.5.16 (the boat lays a real V wake: two arms off the bow at the Kelvin angle past both sides and a churned wash behind the stern, meshes on the water, fading out as far as the plankton wake; [Wake] On); v1.5.15 (underwater the view blues out by about 30 m: our own distance fog over the sky's while the camera is under, plankton fading with it; [Underwater] FogNear / FogFar); v1.5.14 (our own underwater filter for the camera: a clear cool teal with easier bloom so the plankton shows, through the image space override, never the water system; rr underwater on|off); v1.5.13 (oar plankton swirls wider, spreading out and fading sooner; far more glows stuck to the hull and oar blades, bigger, kept glowing with the oars out of the water); v1.5.12 (open-water plankton out to 7000 (was 3600), 1800 of them by default with the wake's fine scatter mixed in; ini key now OpenCount); v1.5.11 (plankton like the concept: finer and far denser sparkles, a wake hugging both sides that opens into a V behind, oar swirls that linger, lake boats light their own wake and oar swirls); v1.5.10 (shoreline plankton scattered in loose patches that hug and curl with the shore, no more single-file rows; open water no longer gets shore spots at sheer drops); v1.5.9 (shoreline plankton is its own pool, apart from the open water: single-file lines along the water's edge and round rocks, jetties and moored boats, washing in and out and creeping along; rr \"plankton shore N\"); v1.5.8 (the v1.5.1 underwater camera fix is off: forcing the water system underwater crashed its culling); v1.5.7 (walking far off and back no longer leaves the boat without collision: the hull is re-homed into your cell once you are back within 3000); v1.5.6 (open-water plankton thick along shorelines and round rocks, jetties and moored boats; anyone wading or swimming stirs it: bursts round them, nearby glows flare and are pushed aside); v1.5.5 (open-water plankton has its own count and size: rr \"plankton open N\", rr \"plankton opensize N\"); v1.5.4 (open-water plankton fixed (dropped the frame it was made), 600 of them at density 3; density 3 and size 0.5 by default, density up to 6, bigger pools); v1.5.3 (plankton never drawn through the hull; the open water all round has its own plankton out to 3600, fading in, drifting and fading out, farther ones drawn bigger); v1.5.2 (plankton: diffuse, slower glows under the surface next to the sparkles on it, oar swirls chaotic: two or three eddies, own spin speeds, some against the swirl, churn, some flung out); v1.5.1 (third person camera keeps the underwater look however deep it goes; plankton drawn on the surface when seen from above, bigger, scattered over the whole hull waterline, the oar blade ones fixed); v1.5.0 (bioluminescent plankton at dusk and night: oar catches stir spiralling, sinking clusters, the hull lights a wake, a few glows cling to the hull and the oar blades; rr plankton); v1.4.4 (player boat lantern on the stern spiral, swinging, lit at night; thwarts moved 6.5 toward the bow and all oarlocks matched to the middle pair); v1.4.3 (hidden carrier horse can no longer be ridden or show a prompt); v1.4.2 (lake boat lanterns hang from the stern spiral and swing like the OAS player lantern, candle flame off, light kept); v1.4.1 (after-load purge only removes our own lake boat parts, actors deleted 2 s after disable); v1.4.0 (OAS soft physics: beach glide, ground lift and tilt, bank governor, ice, rocks, 12 feelers; lighter standing weight fore and aft; oar seat where the clip sits; no rowing from the stern; lake rowers stay seated between rows)";
+	constexpr const char* kVersionShort = "v1.7.44";
+	constexpr const char* kVersion = "v1.7.44 (the hull's ripples have their own settings, oas \"num hull\": size, how far out, how often, height, how many spots a side, the stem and the at-rest ripples on or off; oas \"num stern\" is the tiller only); v1.7.43 (the boat makes its own ripples in the water as the oars do: at the tiller and along the hull, often while moving or turning, now and then at rest; oas \"num stern\" to tune them); v1.7.42 (stood up before the game saves and when the map opens, as Oars and Sails did: no saves or fast travel from the seat); v1.7.41 (a save made while rowing no longer loads you frozen in the seat: you are stood up after the load); v1.7.40 (dismissed dogs (Meeko sent home stays your teammate in the game) never board or stay seated: a dog must be in the follower faction; the fishing supplies at 0.5; the tent and its stowed tarp and poles off for this release, the bedroll slung in leather and the lantern by the bed stay); v1.7.39 (only followers the game counts as your teammates board: dismissed Meeko stays off the boat); v1.7.38 (dismissed followers (Meeko too) are never taken aboard again, and one dismissed while aboard gets off the seat; deleting the boat takes the fishing supplies and the bed with it); v1.7.37 (the tent has its own textures (its fade had faded the rod, the stowed poles and the stowed tarp, which share them, to nothing); the tent draws solid once up, kept 4 clear of the wood; the spare oar removed); v1.7.36 (stowed: the tarp rolled and the bedroll (moved to starboard) slung under the bow thwart in leather straps, the tent poles bundled with rope along the port side forward, the spare oar flat against the port side under the thwarts; with the bed out the shipped oars lie aft of the tent (one lay through it) and the dog sits at the stern facing aft); v1.7.35 (the bed lantern under the bow thwart, clear of the bed; the dog lies down at its seat after a while (it was stood back up whenever it lay down); the tarp over the thwart knees and the bow rope too); v1.7.34 (the bed tent redone: a square way in on two posts up the hull sides and a crossbar (nothing over the bed), grey canvas over eave and ridge poles to the stem head, smooth over the gunwales and oarlocks; it fades in and out over 1.5 s with the bed, the bed too; a lit lantern on the floor by the bed); v1.7.33 (with the bed laid out the oars lie along the gunwales in the middle and aft oarlocks; the tarp goes over the gunwales, rails and oarlocks); v1.7.32 (a canvas tarp tent over the bow while the bedroll is laid out: from the stem head aft over the bed on a ridge pole and two A-frames of skinny poles, no collision); v1.7.31 (standing up from the oars or the helm stops the row animation on the crew rower too (they were left rowing), and sends the stop again over the next second (E right as a stroke started could leave it playing); v1.7.30 (E straight on the fishing supplies goes through the boat's fishing too (marker, open water), never the bare one that turned you to the floor and left you stuck fishing; their prompt only close and standing); v1.7.29 (passengers get up and follow at 400 from the boat (about 6 m; RowRim.ini [Crew] StandUpAt); the fishing supplies placed 3 s after a load, and placed again if their 3D is not in the scene (unseen after a load); v1.7.28 (followers and the dog stay seated when you leave the oars or the helm, also when you step off the boat, until you walk 600 away, then get up and follow; the fishing and bedroll prompts only show up close (90); a fresh fishing marker each time (catches not shown after moving spots); the bedroll at 0.9); v1.7.27 (fishing: the marker is the fisher's standing spot (the fishing moves you onto it): on the floorboards where you stand, facing out over the side, so the rod is in your hands and reeling works; open water checked out to 450; the fishing supplies drawn right after a load); v1.7.26 (fishing from the boat: the fishing's own move of the player (into the water beside the boat) is undone, you stay where you stood on the deck); v1.7.25 (a drawn weapon or spell is put away before you sit at the oars or the helm, the sit waits for it (the camera broke when sitting with it out); the fishing marker on the boat's water, not 14000 down (you were taken underwater), and only on open water: land, shallows or something in the way off that side say so on the HUD); v1.7.24 (fishing from the boat: the supplies are linked to a fishing marker placed on the water off the side you face, as the Creation Club ones are (the cast went nowhere and left you stuck fishing); no fishing prompt or fishing while seated, only standing); v1.7.23 (E standing in the boat no longer sits you down: only the seat prompts do (pick up what you dropped in the boat again); the fishing supplies have their own prompt (Fish), also from the seat (you stand up and fish)); v1.7.22 (seated: your weapon sheathed and your shield taken off (back on when you stand), passengers sheathe theirs (still equipped) and take shields off too; no [E] Talk while seated and no dialogue opened by the E that sits you down or stands you up; E on the fishing supplies from the seat stands you up and starts fishing); v1.7.21 (soft collision: the bow eases to a stop at jetties, docks, longboats, wood and boulders (0.25-0.8 s, begun early enough), small rocks only bump the keel; the fishing supplies no longer fade at cell edges; passengers and the dog stay seated after you stand up until the boat settles, then stand clear of the hull (no dog thrown); fishing supplies found by the plugin's load index; the bedroll no longer respawned every frame at a cell edge; sitting down rolls the bedroll up for good (no more laying itself out when you stand or leave the boat); saved and stray beds removed after a load even with no boat out, strays over the water or by the boat swept for 30 s); v1.7.20 (oas \"grid on|off\": faint see-through walls on the world cell edges round you, your own cell brightest, the cell shown on the HUD as you cross); v1.7.19 (the rower guard never takes an engine late frame as a real move (the jump at row stop); the boat camera tried and removed); v1.7.18 (the rower steadied on the boat before the game builds the third person camera from him, so the camera no longer shakes when the engine leaves him a frame behind; motion log reads the camera as drawn); v1.7.17 (the third person camera steadied where the game really reads it (GetTranslation): no shake when the engine leaves the rower a frame behind while rowing, no pull-in on cell hops; the rower takes row start/stop at once); v1.7.16 (motion log: the rower's pelvis, head and Camera3rd bone on the drawn boat, kinks flagged BONE); v1.7.15 (the hull's collision model, reloaded on a cell hop, hidden right before the draw too; motion log checks the drawn camera); v1.7.14 (seat guard: the rower and the third person camera held steady on the drawn boat: no 1-unit hiccup every ~1.7 s, no camera pull-in on cell hops; oas \"seatguard on|off\"); v1.7.13 (oas \"motionlog [seconds]\": a frame-by-frame log of the boat and the third person camera in RowRim_Motion.log); v1.7.12 (True Directional Movement paused while seated (its turn-toward-input wound the third person camera up until it could no longer look up or down); the orbit fix-up compares angles, never hundreds of radians; dog followers from any canine race and every current follower board); v1.7.11 (E on the bedroll rolled under the bow thwart (Unroll Bedroll) lays the game's own bedroll in the boat to sleep in, for good (oas \"bedroll roll\" to put it away); oas \"num gear\": the numpad places the bedroll and the fishing supplies (Num5 picks which), saved in [Clutter]); v1.7.10 (waterfalls and ledges as in the old Oars and Sails: row over a lip and the boat flies on with its speed, the bow dipping, and lands in the water below with a slap and a dip, or on the ground; no pull or throw; the hull feelers stay quiet with a fall ahead); v1.7.9 (look-at prompts: [E] Board Rowboat on the hull from the water, under it or beside it (you land standing on the floorboards), [E] Steer Helm on the stern seat, [E] Row Oars on the middle thwart, through invisible activators from OarsAndSails.esl; with followers aboard and you at the stern, one of them (never the dog) is picked at random to row: W/S/A/D steer them, the oars follow their hands; a 13th boat spot at Dawnstar); v1.7.8 (the Oars and Sails update: console command oas again (rr still works); boat spots: your boat waits at the docks in RowRim_Docks.ini, oas \"dock add <name>\"; old Oars and Sails boats in a save are cleared away (their chest's contents given to you) and OarsAndSails.esl stays as an obsolete stub; plankton rides the current in rivers and rapids; 3 NPC boats a lake by default; no ghosts, necromancers or templated NPCs rowing the lake boats, robed ones change into plain, fur or hide clothes; rowing speed, glide and turning saved in RowRim.ini [Row] (taken over from OarsAndSails.ini once), oas \"row turn N\"; controller: the mapped Activate button always works seated, R3 + left stick or L3 + right stick zooms ([Controls]); oas help, status, \"reset settings\"); v1.7.7 (no more \"Ride Horse\" on the hidden carrier: its activate text and activation refused through the horse base's vtable; clutter meshes fixed (each piece its own shader property), placeholder textures, keg out, rod in a holder on the hull side, fish bones sprite in the hull); v1.7.0 (boat clutter: a bucket, a spare oar under the thwarts, an ale keg under the aft thwart, a bedroll tied under the bow thwart, a fishing rod trolling off the stern, fish bones by the rope; usable Fishing Supplies (Creation Club Fishing) left of the stern seat, [Clutter]); v1.6.6 (rowing off from rest the boat and passengers drop back only a sliver (drawn 0.7 of the way to this frame, rr \"lead N\"); the player's foot IK held off at the camera update too; a hang watchdog writes our last step to the log); v1.6.5 (seated feet no longer jump up: foot IK off while seated for the player, passengers and lake boat crew); v1.6.4 (passengers drawn on their seats on the boat as drawn (no more sliding off it while rowing); lake boat crew from a save removed after the load (their Fisherman name is not saved, so they were kept and sat on the water while new crew rowed off): the co-save keeps each part with its base); v1.6.3 (crew sit only when not seated (OAS: seated state from their animation events), no more flicker and jumps; standing floor raised 2.5 onto the floorboards; crew seats 5 higher, feet on the boards); v1.6.2 (one dog only, in the OAS dog seat in the bow, facing forward, leaning with the boat, OAS sit control); v1.6.1 (seated player and crew moved with the boat as OAS did (glued each frame, the boat drawn one frame behind), no longer pinned onto the hull; rr \"draw pin\" for the old way); v1.6.0 (crew and passengers from OAS: followers and rr \"crew add\" NPCs board with you on the thwarts (dogs on the floor), late arrivals hop in, rr crew remove|clear|list|summon; rr num: numpad seat tuning, Num5 picks who); v1.5.19 (the stern trail stronger and paler, easy to see again); v1.5.18 (wake: the V is off for now; the stern trail as wide as the hull from the start); v1.5.17 (wake: the V a faint grey-green sheen, the stern trail round foam patches each turned and sized its own way so it never repeats); v1.5.16 (the boat lays a real V wake: two arms off the bow at the Kelvin angle past both sides and a churned wash behind the stern, meshes on the water, fading out as far as the plankton wake; [Wake] On); v1.5.15 (underwater the view blues out by about 30 m: our own distance fog over the sky's while the camera is under, plankton fading with it; [Underwater] FogNear / FogFar); v1.5.14 (our own underwater filter for the camera: a clear cool teal with easier bloom so the plankton shows, through the image space override, never the water system; rr underwater on|off); v1.5.13 (oar plankton swirls wider, spreading out and fading sooner; far more glows stuck to the hull and oar blades, bigger, kept glowing with the oars out of the water); v1.5.12 (open-water plankton out to 7000 (was 3600), 1800 of them by default with the wake's fine scatter mixed in; ini key now OpenCount); v1.5.11 (plankton like the concept: finer and far denser sparkles, a wake hugging both sides that opens into a V behind, oar swirls that linger, lake boats light their own wake and oar swirls); v1.5.10 (shoreline plankton scattered in loose patches that hug and curl with the shore, no more single-file rows; open water no longer gets shore spots at sheer drops); v1.5.9 (shoreline plankton is its own pool, apart from the open water: single-file lines along the water's edge and round rocks, jetties and moored boats, washing in and out and creeping along; rr \"plankton shore N\"); v1.5.8 (the v1.5.1 underwater camera fix is off: forcing the water system underwater crashed its culling); v1.5.7 (walking far off and back no longer leaves the boat without collision: the hull is re-homed into your cell once you are back within 3000); v1.5.6 (open-water plankton thick along shorelines and round rocks, jetties and moored boats; anyone wading or swimming stirs it: bursts round them, nearby glows flare and are pushed aside); v1.5.5 (open-water plankton has its own count and size: rr \"plankton open N\", rr \"plankton opensize N\"); v1.5.4 (open-water plankton fixed (dropped the frame it was made), 600 of them at density 3; density 3 and size 0.5 by default, density up to 6, bigger pools); v1.5.3 (plankton never drawn through the hull; the open water all round has its own plankton out to 3600, fading in, drifting and fading out, farther ones drawn bigger); v1.5.2 (plankton: diffuse, slower glows under the surface next to the sparkles on it, oar swirls chaotic: two or three eddies, own spin speeds, some against the swirl, churn, some flung out); v1.5.1 (third person camera keeps the underwater look however deep it goes; plankton drawn on the surface when seen from above, bigger, scattered over the whole hull waterline, the oar blade ones fixed); v1.5.0 (bioluminescent plankton at dusk and night: oar catches stir spiralling, sinking clusters, the hull lights a wake, a few glows cling to the hull and the oar blades; rr plankton); v1.4.4 (player boat lantern on the stern spiral, swinging, lit at night; thwarts moved 6.5 toward the bow and all oarlocks matched to the middle pair); v1.4.3 (hidden carrier horse can no longer be ridden or show a prompt); v1.4.2 (lake boat lanterns hang from the stern spiral and swing like the OAS player lantern, candle flame off, light kept); v1.4.1 (after-load purge only removes our own lake boat parts, actors deleted 2 s after disable); v1.4.0 (OAS soft physics: beach glide, ground lift and tilt, bank governor, ice, rocks, 12 feelers; lighter standing weight fore and aft; oar seat where the clip sits; no rowing from the stern; lake rowers stay seated between rows)";
 	constexpr float kPi = 3.14159265f;
 	constexpr RE::FormID kRowBoatStatic = 0x00050368;  // ShipRowBoat01 (Skyrim.esm), same base OAS reads
 	// v0.5.0/v0.5.1: RowRim_Hull.nif raises the hull's own floor to model z 38 (the lake surface is at 32), so where people
@@ -1348,6 +1447,8 @@ namespace
 			dockWait_ = 6.0f;  // v1.7.8: the save's own boat is restored first
 			dockServed_ = -1;
 			walkFix_ = 3.0f;  // v1.2.3: a save made after a broken stand-up kept bAllowRotation on: put right after every load
+			loadUnstick_ = 1.5f;  // v1.7.41
+			loadUnstickPass_ = 0;
 			if (seated_) StandUp("game loading");
 			heldOld_.reset();  // the scene is torn down by the load
 			lamp_.reset();
@@ -1416,6 +1517,13 @@ namespace
 		void HoldTalk() { noTalkUntil_ = NowS() + 1.0; }
 		bool NoTalk() const { return seated_ || NowS() < noTalkUntil_; }
 		bool Seated() const { return seated_; }
+		// v1.7.42 (OAS did the same): stood up before a save is written and when the map opens (no fast travel or saves
+		// made in the seat)
+		void StandFor(const char* a_why)
+		{
+			if (!seated_) return;
+			StandUp(a_why);
+		}
 		// E: stand up when seated; sit when standing on (or right by) the hull. Returns true if it acted.
 		bool OnActivate()
 		{
@@ -1681,6 +1789,69 @@ namespace
 			}
 		}
 		Fx::Blade blade_[2];
+		// v1.7.43: the boat's own ripples in the water, as the oars make them: the tiller (rudder) and the hull (the stem and
+		// both sides along the waterline). Moving: one every Wake::g_stern.spread of travel (sooner while turning), bigger
+		// with speed; at rest: now and then, small, as she bobs. Sizes and the tiller's place from oas "num stern".
+		float tillerT_{ 0.0f }, bodyT_{ 0.0f }, rippleYaw_{ 0.0f };
+		int bodyStation_{ 0 };
+		void TendHullRipples(float a_dt)
+		{
+			if (!visual_ || !haveWater_ || a_dt <= 0.0f || groundLift_ > 0.5f) return;
+			Wake::LoadStern();
+			const auto& r = Wake::g_stern;
+			const auto& w = visual_->world;
+			const float spd = std::abs(speed_);
+			const float s01 = std::clamp(spd / 300.0f, 0.0f, 1.0f);
+			float dy = yaw_ - rippleYaw_;
+			while (dy > kPi) dy -= 2.0f * kPi;
+			while (dy < -kPi) dy += 2.0f * kPi;
+			rippleYaw_ = yaw_;
+			const bool turning = std::abs(dy / a_dt) > 0.15f;
+			const bool moving = spd > 15.0f;
+			auto at = [&](float a_x, float a_y) {
+				RE::NiPoint3 p = w * RE::NiPoint3{ a_x, a_y, Plankton::kWaterline };
+				p.z = waterZ_ + r.z;
+				return p;
+			};
+			// the tiller
+			if (r.size > 0.0f && (tillerT_ -= a_dt) <= 0.0f) {
+				tillerT_ = moving ? std::clamp(r.spread / spd, 0.07f, 0.4f) * (turning ? 0.6f : 1.0f) : Plankton::Rand(1.2f, 2.6f) * (turning ? 0.5f : 1.0f);
+				const float sc = moving || turning ? 0.03f + 0.04f * s01 + (turning ? 0.015f : 0.0f) : 0.018f;
+				Fx::Ripple(at(Plankton::Rand(-2.0f, 2.0f), r.y), sc * r.size);
+			}
+			// the hull (v1.7.44: its own settings, oas "num hull"): spots spread evenly from the bow thwart to the aft
+			// thwart, each side in turn with the stem, a little off each spot so it never repeats
+			Wake::LoadHull();
+			const auto& h = Wake::g_hull;
+			const int spots = h.count + (h.stem ? 1 : 0);
+			if (h.size > 0.0f && spots > 0 && (bodyT_ -= a_dt) <= 0.0f) {
+				auto sideAt = [&](int a_i, float a_side) {
+					const float y = h.count > 1 ? 150.0f - 260.0f * a_i / (h.count - 1) : 20.0f;
+					const float yy = y + Plankton::Rand(-12.0f, 12.0f);
+					RE::NiPoint3 p = at(a_side * (Plankton::HalfWidth(yy) + h.out), yy);
+					p.z = waterZ_ + h.z;
+					return p;
+				};
+				if (moving) {
+					bodyT_ = std::clamp(h.every / spd / static_cast<float>(spots), 0.04f, 1.0f);
+					const int k = bodyStation_++ % spots;
+					const float sc = (0.03f + 0.05f * s01) * h.size;
+					if (h.stem && k == spots - 1) {
+						RE::NiPoint3 p = at(0.0f, (speed_ >= 0.0f ? 1.0f : -1.0f) * 240.0f);
+						p.z = waterZ_ + h.z;
+						Fx::Ripple(p, sc * 1.2f);  // the stem (or the stern backing)
+					} else {
+						Fx::Ripple(sideAt(k, 1.0f), sc);
+						Fx::Ripple(sideAt(k, -1.0f), sc);
+					}
+				} else if (h.rest && h.count > 0) {
+					bodyT_ = Plankton::Rand(1.5f, 3.2f);
+					Fx::Ripple(sideAt(static_cast<int>(Plankton::Rand(0.0f, h.count - 0.01f)), Plankton::Rand(0.0f, 1.0f) < 0.5f ? -1.0f : 1.0f), 0.018f * h.size);
+				} else {
+					bodyT_ = 0.5f;
+				}
+			}
+		}
 		bool shipFlipLogged_{ false };
 		float shipW_{ 0.0f };  // v1.7.33: 0 rest/stow .. 1 shipped along the gunwales (bed out)
 		static inline const RE::NiPoint3 kAftLock{ 88.3f, -95.0f, 77.9f };  // the aft oarlock forks (shaft centre), from the hull mesh
@@ -2307,7 +2478,9 @@ namespace
 			if (seated_) Pad::Zoom(a_dt);         // v1.7.8: controller zoom while seated
 			TendModCompat(seated_);               // v1.7.12: True Directional Movement paused while seated (OAS 56.43)
 			Gear::TendNum(a_dt);                  // v1.7.11: oas "num gear"
+			Wake::TendNum(a_dt);                  // v1.7.43: oas "num stern"
 			Gear::TendLoad(refId_ ? Ref() : nullptr, a_dt);  // v1.7.21: saved / stray beds and supplies removed after a load, boat or not
+			TendLoadUnstick(a_dt);  // v1.7.41
 			TendWalkFix(a_dt);
 			{
 				// v1.5.0: the plankton (free glows keep fading even with no boat out)
@@ -2495,6 +2668,7 @@ namespace
 				if (auto* roll = FindShape(visual_.get(), "RowRim_Clutter_Bedroll")) roll->SetAppCulled(rollCulled_);
 			}
 			TendOars(dt);  // v0.8.4: here, after the player's update, as OAS TendBakedBoatOars (the camera hook never called it)
+			TendHullRipples(dt);  // v1.7.43
 			MotionA1();    // v1.7.13
 
 			LogFrame(false, dt);
@@ -3443,6 +3617,40 @@ namespace
 			oarsStowed_ = true;
 			stowW_ = 1.0f;  // unseen: no swing
 			logger::info("Oars: stowed in the boat (you are {:.0f} away, boat {})", dist, inView ? "tiny in view" : "out of view");
+		}
+
+		// v1.7.41 (Nexus report): a save made while rowing loads with the player still in the seated / rowing pose but not
+		// seated as far as we know: frozen, WASD and E dead (oas sit, then E, freed him). 1.5 s and 3 s after a load, if
+		// the player is not seated with us and not in a real chair yet his graph says sitting / in furniture / animation
+		// driven (or his sit state is not normal), he is stood up the way StandUp does it.
+		float loadUnstick_{ 0.0f };
+		int loadUnstickPass_{ 0 };
+		void TendLoadUnstick(float a_dt)
+		{
+			if (loadUnstick_ <= 0.0f) return;
+			if (seated_) { loadUnstick_ = 0.0f; return; }
+			auto* p = RE::PlayerCharacter::GetSingleton();
+			if (!p || !p->Get3D(false)) return;
+			if ((loadUnstick_ -= a_dt) > 0.0f) return;
+			loadUnstick_ = ++loadUnstickPass_ < 2 ? 1.5f : 0.0f;
+			if (p->GetOccupiedFurniture()) return;  // a real chair or bed: the game's own
+			bool sit = false, furn = false, anim = false;
+			p->GetGraphVariableBool("bIsSitting", sit);
+			p->GetGraphVariableBool("isInFurniture", furn);
+			p->GetGraphVariableBool("bAnimationDriven", anim);
+			auto* st = p->AsActorState();
+			const bool sss = st && st->actorState1.sitSleepState != RE::SIT_SLEEP_STATE::kNormal;
+			if (!sit && !furn && !anim && !sss) return;
+			logger::info("Load: the player loaded still seated (bIsSitting {}, isInFurniture {}, bAnimationDriven {}, sit state {}): stood up",
+				sit, furn, anim, st ? static_cast<int>(st->actorState1.sitSleepState) : -1);
+			SetControls(true);
+			MaskSitForFreeLook(p, false);
+			for (const char* ev : { "IdleChairExitStart", "IdleFurnitureExit", "sneakStop", "IdleForceDefaultState" }) p->NotifyAnimationGraph(ev);
+			for (const char* v : { "bIsSitting", "isIdleSitting", "isInFurniture", "bAnimationDriven", "bHumanoidFootIKDisable" }) p->SetGraphVariableBool(v, false);
+			if (st) st->actorState1.sitSleepState = RE::SIT_SLEEP_STATE::kNormal;
+			p->SetGraphVariableBool("bAllowRotation", false);
+			p->SetCollision(true);
+			walkFix_ = 2.0f;
 		}
 
 		// v1.2.3: OAS PostExitStand: for a while after standing up (and after a load) the walking flags are put back every
@@ -5074,6 +5282,7 @@ namespace
 					if (keyboard && !blocked) {
 						Crew::NumKey(id, btn->IsPressed(), btn->IsDown());  // v1.6.0: oas num
 						Gear::NumKey(id, btn->IsPressed(), btn->IsDown());  // v1.7.11: oas "num gear"
+						Wake::NumKey(id, btn->IsPressed());                 // v1.7.43: oas "num stern"
 					}
 					if (!ue) continue;
 					// v1.7.8: L3 (Sneak) and R3 (Toggle POV) held for the seated zoom
@@ -5265,6 +5474,19 @@ namespace
 		}
 	};
 
+	// v1.7.42: the map opened while seated: stood up first (fast travel from the seat left you frozen, as a save did)
+	struct MenuSink : public RE::BSTEventSink<RE::MenuOpenCloseEvent>
+	{
+		static MenuSink* Get() { static MenuSink s; return &s; }
+		RE::BSEventNotifyControl ProcessEvent(const RE::MenuOpenCloseEvent* a_e, RE::BSTEventSource<RE::MenuOpenCloseEvent>*) override
+		{
+			if (a_e && a_e->opening && a_e->menuName == RE::MapMenu::MENU_NAME) {
+				SKSE::GetTaskInterface()->AddTask([]() { TestHull::Get().StandFor("the map opened"); });
+			}
+			return RE::BSEventNotifyControl::kContinue;
+		}
+	};
+
 	struct PlayerUpdateHook
 	{
 		static void Thunk(RE::PlayerCharacter* a_this, float a_delta)
@@ -5333,6 +5555,16 @@ namespace
 		if (lower.rfind("num", 0) == 0) {
 			std::string arg = lower.substr(3);
 			arg.erase(std::remove(arg.begin(), arg.end(), ' '), arg.end());
+			// v1.7.43: oas "num stern" (the tiller's ripples), v1.7.44: oas "num hull" (the hull's); the other modes off meanwhile
+			if (arg == "stern" || arg == "tiller" || arg == "hull") {
+				const int mode = arg == "hull" ? 2 : 1;
+				if (Wake::g_mode == mode) { Print("RowRim: " + Wake::NumCommand(0)); return; }
+				Crew::NumCommand("off");
+				if (Gear::NumOn()) Gear::NumCommand(false);
+				Print("RowRim: " + Wake::NumCommand(mode));
+				return;
+			}
+			if (Wake::NumOn()) Wake::NumCommand(0);
 			// v1.7.11: oas "num gear": the numpad places the fishing supplies and the bedroll (the crew tuning off meanwhile)
 			if (arg == "gear" || arg == "items" || arg == "bedroll" || arg == "supplies") {
 				Crew::NumCommand("off");
@@ -5552,6 +5784,7 @@ namespace
 			ThirdPersonStateUpdateHook::Install();
 			RegisterConsoleCommand();
 			if (auto* mgr = RE::BSInputDeviceManager::GetSingleton()) mgr->AddEventSink(InputSink::Get());
+			if (auto* ui = RE::UI::GetSingleton()) ui->AddEventSink<RE::MenuOpenCloseEvent>(MenuSink::Get());  // v1.7.42
 			logger::info("RowRim ready ({})", kVersion);
 			break;
 		case SKSE::MessagingInterface::kPreLoadGame:
@@ -5564,6 +5797,9 @@ namespace
 			LakeBoats::OnGameLoading();
 			Plankton::Flow::Clear();
 			Legacy::OnGameLoaded();  // v1.7.8
+			break;
+		case SKSE::MessagingInterface::kSaveGame:
+			TestHull::Get().StandFor("saving the game");  // v1.7.42
 			break;
 		case SKSE::MessagingInterface::kPostLoadGame:
 			Legacy::OnGameLoaded();  // v1.7.8: the old-boat sweep starts a few seconds in; the OarsAndSails.dll warning
@@ -5671,3 +5907,6 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 	SKSE::GetMessagingInterface()->RegisterListener(OnMessage);
 	return true;
 }
+
+#undef GetPrivateProfileStringA
+#undef GetPrivateProfileIntA
