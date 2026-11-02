@@ -7,8 +7,12 @@
 // lays the game's own bedroll (furniture: sleep in it) on the floorboards and hides the roll; it stays out for good
 // ([Clutter] Bedroll=1; oas "bedroll roll" puts it away). oas "num gear": the numpad places them (Num5 picks which,
 // 8/2 forward/back, 4/6 left/right, 9/3 up/down, 7/1 turn), saved in RowRim.ini [Clutter] <Item>X / Y / Z / Yaw.
+// v1.7.45: the supplies' own mesh is hidden: the fish tub baked into the hull floor (RowRim_Clutter_FishBucket,
+// scripts/clutter/fishbucket.py) is what you see, and the supplies ref is kept on the tub (fixed, not numpad placed) so
+// looking at the tub still gives "Use Fishing Supplies" and its script.
 namespace Gear
 {
+	constexpr float kTubX = -44.5f, kTubY = -143.0f, kTubZ = 40.4f;  // the tub's spot in the hull (fishbucket.py SPOT, floor)
 	struct Item
 	{
 		const char* key;    // ini prefix
@@ -24,6 +28,7 @@ namespace Gear
 		float no3D = 0.0f;  // v1.7.12: how long it has had no 3D
 		bool had3D = false;  // v1.7.27
 		double placedAt = -100.0;  // v1.7.34: when placed (steady clock s): it fades in over 1.5 s
+		bool parked = false;  // v1.7.47: packed up: the ref is kept, disabled (no delete / place churn on every toggle)
 	};
 	enum : int { kSupplies = 0, kBedroll = 1, kItems = 2 };
 	inline Item g_items[kItems] = {
@@ -60,6 +65,8 @@ namespace Gear
 			it.yaw = IniF((k + "Yaw").c_str(), it.yaw);
 			it.scale = std::clamp(IniF((k + "Scale").c_str(), it.scale), 0.1f, 2.0f);
 		}
+		auto& sup = g_items[kSupplies];  // v1.7.45: on the tub, whatever the ini says
+		sup.x = kTubX; sup.y = kTubY; sup.z = kTubZ; sup.yaw = 0.0f;
 	}
 	inline void SaveItem(const Item& a_it)
 	{
@@ -182,6 +189,18 @@ namespace Gear
 		return it.base;
 	}
 	inline bool BedrollOut() { Load(); return g_items[kBedroll].on; }
+	// v1.7.48: the hull carries our own sleeping bag (RowRim_Clutter_SleepingBag): the game's bedroll mesh is hidden and the
+	// bag drawn on the bed's spot instead (the furniture ref stays for sleeping in)
+	inline bool g_ownBag = false;
+	inline bool BedPose(RE::NiPoint3& a_at, float& a_yawDeg, float& a_scale)
+	{
+		Load();
+		const auto& it = g_items[kBedroll];
+		a_at = RE::NiPoint3{ it.x, it.y, it.z };
+		a_yawDeg = it.yaw;
+		a_scale = it.scale;
+		return true;
+	}
 	inline bool g_seated = false;  // v1.7.12: the player is seated: the bedroll is stowed (rolled) meanwhile
 	// v1.7.12: the bedroll is lying in the boat right now (out, not stowed for the ride, and drawn): the roll is hidden only then
 	inline bool BedrollShown()
@@ -190,7 +209,7 @@ namespace Gear
 		auto& it = g_items[kBedroll];
 		if (!it.on || g_seated) return false;
 		auto r = it.ref.get();
-		return r && r->Get3D() != nullptr;
+		return r && !it.parked && !r->IsDisabled() && r->Get3D() != nullptr;
 	}
 
 	inline void SetScale(RE::TESObjectREFR* a_ref, float a_scale)
@@ -215,6 +234,30 @@ namespace Gear
 		}
 		it.ref = {};
 		it.lastYaw = 1.0e9f;
+		it.parked = false;
+	}
+	// v1.7.47: packed up (or stowed for the ride): the bed is only disabled, and enabled again when it is laid out. Placing
+	// and deleting a new furniture ref on every toggle left it unseen at times and could hang the game on quick toggles.
+	inline double Now() { return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count(); }
+	inline void Park(int a_i, const char* a_why)
+	{
+		auto& it = g_items[a_i];
+		auto r = it.ref.get();
+		if (!r || r->IsDeleted()) { Remove(a_i, a_why); return; }
+		if (!it.parked) {
+			if (!r->IsDisabled()) r->Disable();
+			it.parked = true;
+			logger::info("Gear: {} put away ({})", it.label, a_why);
+		}
+	}
+	// v1.7.47: one pack-up / unroll at a time: E again within 1.6 s (the bed's fade in) is ignored
+	inline double g_bedToggleAt = -100.0;
+	inline bool BedToggleReady()
+	{
+		const double now = Now();
+		if (now - g_bedToggleAt < 1.6) return false;
+		g_bedToggleAt = now;
+		return true;
 	}
 
 	// the crosshair is on one of ours (E then uses it; the boat's E sit is skipped)
@@ -350,7 +393,7 @@ namespace Gear
 		if (a_arg == "roll" || a_arg == "off" || a_arg == "pack") {
 			g_items[kBedroll].on = false;
 			WritePrivateProfileStringA("Clutter", "Bedroll", "0", Plankton::IniPath().c_str());
-			Remove(kBedroll, "rolled up");
+			Park(kBedroll, "rolled up");
 			return "bedroll rolled up under the bow thwart";
 		}
 		if (a_arg == "unroll" || a_arg == "on") { Unroll(); return "bedroll laid out in the boat"; }
@@ -425,6 +468,22 @@ namespace Gear
 	}
 
 	// every frame the boat is placed: a_at / a_rot the boat model's pose, a_yaw its facing
+	// v1.7.46: the game's Fishing Supplies mesh is gone from the boat: every node culled and faded out, every frame (a
+	// cell hop or a reload brings its 3D back), only its collision (the crosshair pick) and its script remain
+	inline void HideMeshNode(RE::NiAVObject* a_obj)
+	{
+		if (!a_obj) return;
+		if (!a_obj->GetAppCulled()) a_obj->SetAppCulled(true);
+		if (auto* node = a_obj->AsNode()) {
+			for (auto& c : node->GetChildren()) HideMeshNode(c.get());
+		}
+	}
+	inline void HideMesh(RE::NiAVObject* a_root)
+	{
+		if (!a_root) return;
+		if (auto* fade = a_root->AsFadeNode()) fade->GetRuntimeData().currentFade = 0.0f;
+		HideMeshNode(a_root);
+	}
 	inline void Tend(RE::TESObjectREFR* a_hull, const RE::NiPoint3& a_at, const RE::NiMatrix3& a_rot, float a_yaw, float a_dt, bool a_seated)
 	{
 		Load();
@@ -436,7 +495,7 @@ namespace Gear
 			if (a_seated && bed.on) {
 				bed.on = false;
 				WritePrivateProfileStringA("Clutter", "Bedroll", "0", Plankton::IniPath().c_str());
-				Remove(kBedroll, "rolled up for the ride");
+				Park(kBedroll, "rolled up for the ride");
 				RE::SendHUDMessage::ShowHUDMessage("Bedroll rolled up for the ride");
 			}
 			bed.retry = 0.0f;
@@ -446,14 +505,33 @@ namespace Gear
 			// v1.7.12: the bedroll is stowed while you sit (rolled up for the ride; it rode along in the cell it was laid out
 			// in and was lost when that cell unloaded)
 			const bool want = it.on && a_hull && !(i == kBedroll && a_seated);
-			if (!want) { if (it.ref) Remove(i, !a_hull ? "no boat" : !it.on ? "off" : "stowed for the ride"); continue; }
+			if (!want) {
+				if (it.ref) {
+					if (i == kBedroll && a_hull) Park(i, !it.on ? "off" : "stowed for the ride");  // v1.7.47: kept, disabled
+					else Remove(i, !a_hull ? "no boat" : !it.on ? "off" : "stowed for the ride");
+				}
+				continue;
+			}
 			auto r = it.ref.get();
+			if (r && it.parked) {  // v1.7.47: laid out again: the same bed enabled, set on its spot, fading in
+				if (r->IsDeleted()) { Remove(i, "gone while put away"); r = nullptr; }
+				else {
+					r->Enable(false);
+					it.parked = false;
+					it.placedAt = Now();
+					it.had3D = false;
+					it.no3D = 0.0f;
+					it.lastYaw = 1.0e9f;
+					logger::info("Gear: {} {:08X} laid out again", it.label, r->GetFormID());
+				}
+			}
 			// v1.7.12: left behind in another cell, or no 3D for 1.5 s (its cell unloaded): placed again from the boat
 			if (r && !r->IsDeleted()) {
 				// v1.7.27: placed during a load its 3D came in later where the ref was first put (at the hull): unseen until the
 				// boat moved. When the 3D arrives, the ref is set on its spot again.
 				if (r->Get3D() && !it.had3D) it.lastYaw = 1.0e9f;
 				it.had3D = r->Get3D() != nullptr;
+				if (i == kSupplies || (i == kBedroll && g_ownBag)) HideMesh(r->Get3D());  // v1.7.46: hidden before it is ever drawn (v1.7.48: the bed too, our bag shows)
 				// v1.7.29: 3D that is not in the scene (no parent) counts as none: placed again after 1.5 s
 				auto* r3 = r->Get3D();
 				it.no3D = r3 && r3->parent ? 0.0f : it.no3D + a_dt;
@@ -505,8 +583,10 @@ namespace Gear
 		for (auto& it : g_items) {
 			if (!it.on) continue;
 			auto r = it.ref.get();
+			if (it.parked || (r && r->IsDisabled())) continue;  // v1.7.47: put away
 			auto* root = r ? r->Get3D() : nullptr;
 			if (!root) continue;
+			if (&it == &g_items[kSupplies] || (&it == &g_items[kBedroll] && g_ownBag)) { HideMesh(root); continue; }  // v1.7.48: the bed's mesh too  // v1.7.46: never drawn (the tub is), still picked
 			// v1.7.21: a ref moved into the next cell reloads its 3D and fades in from nothing: held fully drawn (as the hull)
 			// v1.7.34: except its first 1.5 s: laid out (the bed) it fades in slowly, with the tent
 			if (auto* fade = root->AsFadeNode()) {
@@ -542,6 +622,7 @@ namespace Gear
 		default: return -1;
 		}
 	}
+	inline bool Placeable(int a_i) { return a_i != kSupplies && g_items[a_i].on && g_items[a_i].ref; }  // v1.7.45: the supplies sit on the tub
 	inline void ShowSel()
 	{
 		auto& it = g_items[g_sel];
@@ -556,7 +637,7 @@ namespace Gear
 			if (a_downEdge) {
 				for (int n = 0; n < kItems; ++n) {
 					g_sel = (g_sel + 1) % kItems;
-					if (g_items[g_sel].on && g_items[g_sel].ref) break;
+					if (Placeable(g_sel)) break;
 				}
 				ShowSel();
 			}
@@ -595,8 +676,9 @@ namespace Gear
 			return "gear placing off";
 		}
 		g_numOn = true;
-		if (!(g_items[g_sel].on && g_items[g_sel].ref)) {
-			for (int n = 0; n < kItems; ++n) if (g_items[n].on && g_items[n].ref) { g_sel = n; break; }
+		if (!Placeable(g_sel)) {
+			g_sel = kBedroll;
+			for (int n = 0; n < kItems; ++n) if (Placeable(n)) { g_sel = n; break; }
 		}
 		ShowSel();
 		return "gear placing on: Num5 picks the item, 8/2 forward/back, 4/6 left/right, 9/3 up/down, 7/1 turn (saved); oas \"num off\" to stop";
@@ -633,6 +715,7 @@ namespace Gear
 			it.ref = {};
 			it.retry = 3.0f;  // v1.7.29: first placed 3 s after a load, into a cell that is fully in (placed during the load it stayed unseen)
 			it.lastYaw = 1.0e9f;
+			it.parked = false;
 		}
 		g_purge.clear();
 		g_marker = {};  // v1.7.24

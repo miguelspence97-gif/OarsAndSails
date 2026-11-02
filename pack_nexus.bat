@@ -6,10 +6,11 @@ rem   OarsAndSails.esl                    = the prompt / old-save stub (overwrit
 rem   animations\OarsAndSails\...          = RowRim's row clip under the OAS name and list (same event, same path:
 rem                                          no Nemesis / Pandora re-run needed), the OAS GPMA files kept as they were
 rem v1.7.40: textures the release does not use (the tent is off) and source images are left out
+rem v1.7.55: also the v1.7.48 sleeping bag's textures (the bed is the camp bed now)
 rem release\oas_overlay.zip holds those OAS-named files. Build first (build.bat).
 setlocal
 cd /d "%~dp0"
-set "VER=v1.7.45"
+set "VER=v1.7.55"
 rem v1.7.20: the zip is named just "Oars and Sails" so MO2 offers it as the existing Oars and Sails mod (Replace);
 rem the version goes in Nexus's version field, not the file name
 set "ZIP=dist\Oars and Sails.zip"
@@ -20,7 +21,7 @@ if not exist "build\msvc\RowRim.dll" (
   echo build\msvc\RowRim.dll not found: run build.bat first
   goto :fail
 )
-robocopy "Data" "%STAGE%\Data" /E /NFL /NDL /NJH /NJS /NP /XD RowRimRowing /XF FNIS_RowRimRowing_Behavior.hkx RowRim.esl boat_tent_d.dds boat_tent_n.dds boat_tentpole_d.dds boat_canvas_d.dds boat_canvas_n.dds boat_bench_d.dds fishbone_d.dds *.jpg *.png *.pdb >nul
+robocopy "Data" "%STAGE%\Data" /E /NFL /NDL /NJH /NJS /NP /XD RowRimRowing /XF FNIS_RowRimRowing_Behavior.hkx RowRim.esl boat_tent_d.dds boat_tent_n.dds boat_tentpole_d.dds boat_canvas_d.dds boat_canvas_n.dds boat_bench_d.dds fishbone_d.dds boat_sleepingbag_d.dds boat_sleepingbag_n.dds *.jpg *.png *.pdb >nul
 if errorlevel 8 goto :fail
 powershell -NoProfile -Command "Expand-Archive -Force -Path 'release\oas_overlay.zip' -DestinationPath '%STAGE%'"
 if errorlevel 1 goto :fail

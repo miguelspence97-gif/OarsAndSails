@@ -68,6 +68,20 @@ goto :nefdone
 echo Could not copy the DLL to NEFARAM. Is Skyrim still running?
 goto :fail
 :nefdone
+rem v1.7.47: the Default MO2 profile plays the "Oars and Sails" mod (RowRim (Test Build) is not in it): the same
+rem release layout goes there too, so a build always reaches the game
+set "OAS=E:\Modding2\MO2\mods\Oars and Sails"
+if not exist "%OAS%" goto :oasdone
+if not exist "%OAS%\SKSE\Plugins" mkdir "%OAS%\SKSE\Plugins"
+copy /Y "%OUT%\RowRim.dll" "%OAS%\SKSE\Plugins\OarsAndSails.dll" >nul
+if errorlevel 1 (
+  echo Could not copy the DLL to the Oars and Sails mod. Is Skyrim still running?
+  goto :fail
+)
+robocopy "Data" "%OAS%" /E /XO /NFL /NDL /NJH /NJS /NP /XD RowRimRowing /XF FNIS_RowRimRowing_Behavior.hkx RowRim.esl >nul
+if exist "release\OarsAndSails.esl" copy /Y "release\OarsAndSails.esl" "%OAS%\" >nul
+echo Also deployed to %OAS% (the Default profile's mod)
+:oasdone
 
 echo.
 echo BUILD OK

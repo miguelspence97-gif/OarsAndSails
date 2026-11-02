@@ -150,8 +150,13 @@ namespace RowRimBakedIni
 
 namespace
 {
-	constexpr const char* kVersionShort = "v1.7.45";
-	constexpr const char* kVersion = "v1.7.45 (no nose dives on open water: a ledge needs ground level with the water at the lip (the deep bed under open water counted as one), and a fall with the same water still under it is called off back on the waterline); v1.7.44 (the hull's ripples have their own settings, oas \"num hull\": size, how far out, how often, height, how many spots a side, the stem and the at-rest ripples on or off; oas \"num stern\" is the tiller only); v1.7.43 (the boat makes its own ripples in the water as the oars do: at the tiller and along the hull, often while moving or turning, now and then at rest; oas \"num stern\" to tune them); v1.7.42 (stood up before the game saves and when the map opens, as Oars and Sails did: no saves or fast travel from the seat); v1.7.41 (a save made while rowing no longer loads you frozen in the seat: you are stood up after the load); v1.7.40 (dismissed dogs (Meeko sent home stays your teammate in the game) never board or stay seated: a dog must be in the follower faction; the fishing supplies at 0.5; the tent and its stowed tarp and poles off for this release, the bedroll slung in leather and the lantern by the bed stay); v1.7.39 (only followers the game counts as your teammates board: dismissed Meeko stays off the boat); v1.7.38 (dismissed followers (Meeko too) are never taken aboard again, and one dismissed while aboard gets off the seat; deleting the boat takes the fishing supplies and the bed with it); v1.7.37 (the tent has its own textures (its fade had faded the rod, the stowed poles and the stowed tarp, which share them, to nothing); the tent draws solid once up, kept 4 clear of the wood; the spare oar removed); v1.7.36 (stowed: the tarp rolled and the bedroll (moved to starboard) slung under the bow thwart in leather straps, the tent poles bundled with rope along the port side forward, the spare oar flat against the port side under the thwarts; with the bed out the shipped oars lie aft of the tent (one lay through it) and the dog sits at the stern facing aft); v1.7.35 (the bed lantern under the bow thwart, clear of the bed; the dog lies down at its seat after a while (it was stood back up whenever it lay down); the tarp over the thwart knees and the bow rope too); v1.7.34 (the bed tent redone: a square way in on two posts up the hull sides and a crossbar (nothing over the bed), grey canvas over eave and ridge poles to the stem head, smooth over the gunwales and oarlocks; it fades in and out over 1.5 s with the bed, the bed too; a lit lantern on the floor by the bed); v1.7.33 (with the bed laid out the oars lie along the gunwales in the middle and aft oarlocks; the tarp goes over the gunwales, rails and oarlocks); v1.7.32 (a canvas tarp tent over the bow while the bedroll is laid out: from the stem head aft over the bed on a ridge pole and two A-frames of skinny poles, no collision); v1.7.31 (standing up from the oars or the helm stops the row animation on the crew rower too (they were left rowing), and sends the stop again over the next second (E right as a stroke started could leave it playing); v1.7.30 (E straight on the fishing supplies goes through the boat's fishing too (marker, open water), never the bare one that turned you to the floor and left you stuck fishing; their prompt only close and standing); v1.7.29 (passengers get up and follow at 400 from the boat (about 6 m; RowRim.ini [Crew] StandUpAt); the fishing supplies placed 3 s after a load, and placed again if their 3D is not in the scene (unseen after a load); v1.7.28 (followers and the dog stay seated when you leave the oars or the helm, also when you step off the boat, until you walk 600 away, then get up and follow; the fishing and bedroll prompts only show up close (90); a fresh fishing marker each time (catches not shown after moving spots); the bedroll at 0.9); v1.7.27 (fishing: the marker is the fisher's standing spot (the fishing moves you onto it): on the floorboards where you stand, facing out over the side, so the rod is in your hands and reeling works; open water checked out to 450; the fishing supplies drawn right after a load); v1.7.26 (fishing from the boat: the fishing's own move of the player (into the water beside the boat) is undone, you stay where you stood on the deck); v1.7.25 (a drawn weapon or spell is put away before you sit at the oars or the helm, the sit waits for it (the camera broke when sitting with it out); the fishing marker on the boat's water, not 14000 down (you were taken underwater), and only on open water: land, shallows or something in the way off that side say so on the HUD); v1.7.24 (fishing from the boat: the supplies are linked to a fishing marker placed on the water off the side you face, as the Creation Club ones are (the cast went nowhere and left you stuck fishing); no fishing prompt or fishing while seated, only standing); v1.7.23 (E standing in the boat no longer sits you down: only the seat prompts do (pick up what you dropped in the boat again); the fishing supplies have their own prompt (Fish), also from the seat (you stand up and fish)); v1.7.22 (seated: your weapon sheathed and your shield taken off (back on when you stand), passengers sheathe theirs (still equipped) and take shields off too; no [E] Talk while seated and no dialogue opened by the E that sits you down or stands you up; E on the fishing supplies from the seat stands you up and starts fishing); v1.7.21 (soft collision: the bow eases to a stop at jetties, docks, longboats, wood and boulders (0.25-0.8 s, begun early enough), small rocks only bump the keel; the fishing supplies no longer fade at cell edges; passengers and the dog stay seated after you stand up until the boat settles, then stand clear of the hull (no dog thrown); fishing supplies found by the plugin's load index; the bedroll no longer respawned every frame at a cell edge; sitting down rolls the bedroll up for good (no more laying itself out when you stand or leave the boat); saved and stray beds removed after a load even with no boat out, strays over the water or by the boat swept for 30 s); v1.7.20 (oas \"grid on|off\": faint see-through walls on the world cell edges round you, your own cell brightest, the cell shown on the HUD as you cross); v1.7.19 (the rower guard never takes an engine late frame as a real move (the jump at row stop); the boat camera tried and removed); v1.7.18 (the rower steadied on the boat before the game builds the third person camera from him, so the camera no longer shakes when the engine leaves him a frame behind; motion log reads the camera as drawn); v1.7.17 (the third person camera steadied where the game really reads it (GetTranslation): no shake when the engine leaves the rower a frame behind while rowing, no pull-in on cell hops; the rower takes row start/stop at once); v1.7.16 (motion log: the rower's pelvis, head and Camera3rd bone on the drawn boat, kinks flagged BONE); v1.7.15 (the hull's collision model, reloaded on a cell hop, hidden right before the draw too; motion log checks the drawn camera); v1.7.14 (seat guard: the rower and the third person camera held steady on the drawn boat: no 1-unit hiccup every ~1.7 s, no camera pull-in on cell hops; oas \"seatguard on|off\"); v1.7.13 (oas \"motionlog [seconds]\": a frame-by-frame log of the boat and the third person camera in RowRim_Motion.log); v1.7.12 (True Directional Movement paused while seated (its turn-toward-input wound the third person camera up until it could no longer look up or down); the orbit fix-up compares angles, never hundreds of radians; dog followers from any canine race and every current follower board); v1.7.11 (E on the bedroll rolled under the bow thwart (Unroll Bedroll) lays the game's own bedroll in the boat to sleep in, for good (oas \"bedroll roll\" to put it away); oas \"num gear\": the numpad places the bedroll and the fishing supplies (Num5 picks which), saved in [Clutter]); v1.7.10 (waterfalls and ledges as in the old Oars and Sails: row over a lip and the boat flies on with its speed, the bow dipping, and lands in the water below with a slap and a dip, or on the ground; no pull or throw; the hull feelers stay quiet with a fall ahead); v1.7.9 (look-at prompts: [E] Board Rowboat on the hull from the water, under it or beside it (you land standing on the floorboards), [E] Steer Helm on the stern seat, [E] Row Oars on the middle thwart, through invisible activators from OarsAndSails.esl; with followers aboard and you at the stern, one of them (never the dog) is picked at random to row: W/S/A/D steer them, the oars follow their hands; a 13th boat spot at Dawnstar); v1.7.8 (the Oars and Sails update: console command oas again (rr still works); boat spots: your boat waits at the docks in RowRim_Docks.ini, oas \"dock add <name>\"; old Oars and Sails boats in a save are cleared away (their chest's contents given to you) and OarsAndSails.esl stays as an obsolete stub; plankton rides the current in rivers and rapids; 3 NPC boats a lake by default; no ghosts, necromancers or templated NPCs rowing the lake boats, robed ones change into plain, fur or hide clothes; rowing speed, glide and turning saved in RowRim.ini [Row] (taken over from OarsAndSails.ini once), oas \"row turn N\"; controller: the mapped Activate button always works seated, R3 + left stick or L3 + right stick zooms ([Controls]); oas help, status, \"reset settings\"); v1.7.7 (no more \"Ride Horse\" on the hidden carrier: its activate text and activation refused through the horse base's vtable; clutter meshes fixed (each piece its own shader property), placeholder textures, keg out, rod in a holder on the hull side, fish bones sprite in the hull); v1.7.0 (boat clutter: a bucket, a spare oar under the thwarts, an ale keg under the aft thwart, a bedroll tied under the bow thwart, a fishing rod trolling off the stern, fish bones by the rope; usable Fishing Supplies (Creation Club Fishing) left of the stern seat, [Clutter]); v1.6.6 (rowing off from rest the boat and passengers drop back only a sliver (drawn 0.7 of the way to this frame, rr \"lead N\"); the player's foot IK held off at the camera update too; a hang watchdog writes our last step to the log); v1.6.5 (seated feet no longer jump up: foot IK off while seated for the player, passengers and lake boat crew); v1.6.4 (passengers drawn on their seats on the boat as drawn (no more sliding off it while rowing); lake boat crew from a save removed after the load (their Fisherman name is not saved, so they were kept and sat on the water while new crew rowed off): the co-save keeps each part with its base); v1.6.3 (crew sit only when not seated (OAS: seated state from their animation events), no more flicker and jumps; standing floor raised 2.5 onto the floorboards; crew seats 5 higher, feet on the boards); v1.6.2 (one dog only, in the OAS dog seat in the bow, facing forward, leaning with the boat, OAS sit control); v1.6.1 (seated player and crew moved with the boat as OAS did (glued each frame, the boat drawn one frame behind), no longer pinned onto the hull; rr \"draw pin\" for the old way); v1.6.0 (crew and passengers from OAS: followers and rr \"crew add\" NPCs board with you on the thwarts (dogs on the floor), late arrivals hop in, rr crew remove|clear|list|summon; rr num: numpad seat tuning, Num5 picks who); v1.5.19 (the stern trail stronger and paler, easy to see again); v1.5.18 (wake: the V is off for now; the stern trail as wide as the hull from the start); v1.5.17 (wake: the V a faint grey-green sheen, the stern trail round foam patches each turned and sized its own way so it never repeats); v1.5.16 (the boat lays a real V wake: two arms off the bow at the Kelvin angle past both sides and a churned wash behind the stern, meshes on the water, fading out as far as the plankton wake; [Wake] On); v1.5.15 (underwater the view blues out by about 30 m: our own distance fog over the sky's while the camera is under, plankton fading with it; [Underwater] FogNear / FogFar); v1.5.14 (our own underwater filter for the camera: a clear cool teal with easier bloom so the plankton shows, through the image space override, never the water system; rr underwater on|off); v1.5.13 (oar plankton swirls wider, spreading out and fading sooner; far more glows stuck to the hull and oar blades, bigger, kept glowing with the oars out of the water); v1.5.12 (open-water plankton out to 7000 (was 3600), 1800 of them by default with the wake's fine scatter mixed in; ini key now OpenCount); v1.5.11 (plankton like the concept: finer and far denser sparkles, a wake hugging both sides that opens into a V behind, oar swirls that linger, lake boats light their own wake and oar swirls); v1.5.10 (shoreline plankton scattered in loose patches that hug and curl with the shore, no more single-file rows; open water no longer gets shore spots at sheer drops); v1.5.9 (shoreline plankton is its own pool, apart from the open water: single-file lines along the water's edge and round rocks, jetties and moored boats, washing in and out and creeping along; rr \"plankton shore N\"); v1.5.8 (the v1.5.1 underwater camera fix is off: forcing the water system underwater crashed its culling); v1.5.7 (walking far off and back no longer leaves the boat without collision: the hull is re-homed into your cell once you are back within 3000); v1.5.6 (open-water plankton thick along shorelines and round rocks, jetties and moored boats; anyone wading or swimming stirs it: bursts round them, nearby glows flare and are pushed aside); v1.5.5 (open-water plankton has its own count and size: rr \"plankton open N\", rr \"plankton opensize N\"); v1.5.4 (open-water plankton fixed (dropped the frame it was made), 600 of them at density 3; density 3 and size 0.5 by default, density up to 6, bigger pools); v1.5.3 (plankton never drawn through the hull; the open water all round has its own plankton out to 3600, fading in, drifting and fading out, farther ones drawn bigger); v1.5.2 (plankton: diffuse, slower glows under the surface next to the sparkles on it, oar swirls chaotic: two or three eddies, own spin speeds, some against the swirl, churn, some flung out); v1.5.1 (third person camera keeps the underwater look however deep it goes; plankton drawn on the surface when seen from above, bigger, scattered over the whole hull waterline, the oar blade ones fixed); v1.5.0 (bioluminescent plankton at dusk and night: oar catches stir spiralling, sinking clusters, the hull lights a wake, a few glows cling to the hull and the oar blades; rr plankton); v1.4.4 (player boat lantern on the stern spiral, swinging, lit at night; thwarts moved 6.5 toward the bow and all oarlocks matched to the middle pair); v1.4.3 (hidden carrier horse can no longer be ridden or show a prompt); v1.4.2 (lake boat lanterns hang from the stern spiral and swing like the OAS player lantern, candle flame off, light kept); v1.4.1 (after-load purge only removes our own lake boat parts, actors deleted 2 s after disable); v1.4.0 (OAS soft physics: beach glide, ground lift and tilt, bank governor, ice, rocks, 12 feelers; lighter standing weight fore and aft; oar seat where the clip sits; no rowing from the stern; lake rowers stay seated between rows)";
+	constexpr const char* kVersionShort = "v1.7.55";
+	constexpr const char* kVersion =
+		"v1.7.55 (the first bump: a voiced vanilla \"Ow!\" / \"What was that for?\" (the Hit topic), no HUD text); v1.7.54 (your boat bumps the lake boats: pushed apart with a small recoil; their crew react the first time, row away fast the second, and blame you with a vanilla line the third (a bump counts at most every 3 s); never the same person twice in one boat; no HUD text when old Oars and Sails boats are cleared; at the stern without a rower: 'No rower, move to rower seat or have crew'); v1.7.53 (the tiller ripple dead centre; the hull ripple is the tiller's twin, dead centre under the rower; the oarlocks in their own forged iron texture); v1.7.52 (slaughterfish and mudcrabs leave you, your followers, the dog and the crew alone while you are aboard (not swimming); the hidden horse's breathing muted; the bed lantern further forward; the middle and aft oarlocks turn to cradle the shipped oars; foot IK off while standing aboard (a foot rose onto invisible collision)); v1.7.51 (two copies of RowRim installed at once (RowRim.dll and OarsAndSails.dll): the RowRim.dll copy does nothing, so nothing runs twice); v1.7.50 (the [E] prompts no longer end up elsewhere in the boat after rowing: once the boat is still, a prompt carried more than 30 from where it was placed or off its spot is placed fresh; the bed darker, its sides shaded); v1.7.49 (the bed is a patchwork fur and shearling camping bag (from Miguel's picture), fading in when laid out and out when packed up; the Fish prompt on the tub steady: the prompt proxies move with the boat instead of being deleted and placed again, a wider aim, reach 120); v1.7.48 (a leather and sheepskin sleeping bag in place of the game's bedroll mesh (\"Sleeping bag\" by Tactical_Beard, CC BY 4.0, retextured): drawn on the bed's spot while it is laid out, the bedroll furniture kept for sleeping); v1.7.47 (the bedroll is kept when packed up (disabled, enabled again when laid out) instead of a new bed placed and deleted each time: it no longer goes missing, and E on it again within 1.6 s is ignored (quick repeats could hang the game); the fish in the tub darker); v1.7.46 (no more going over waterfalls and ledges: the boat stops at the lip (forward or backing) with a HUD note, the v1.7.10 fall removed; a ledge needs ground level with the water at the lip (no false stops on open water); a tub of fish baked into the floorboards, port side aft, in place of the Fishing Supplies: their own mesh hidden, the supplies kept on the tub so E on it still uses them (no numpad placing for them)); v1.7.44 (the hull's ripples have their own settings, oas \"num hull\": size, how far out, how often, height, how many spots a side, the stem and the at-rest ripples on or off; oas \"num stern\" is the tiller only); v1.7.43 (the boat makes its own ripples in the water as the oars do: at the tiller and along the hull, often while moving or turning, now and then at rest; oas \"num stern\" to tune them); v1.7.42 (stood up before the game saves and when the map opens, as Oars and Sails did: no saves or fast travel from the seat); v1.7.41 (a save made while rowing no longer loads you frozen in the seat: you are stood up after the load); v1.7.40 (dismissed dogs (Meeko sent home stays your teammate in the game) never board or stay seated: a dog must be in the follower faction; the fishing supplies at 0.5; the tent and its stowed tarp and poles off for this release, the bedroll slung in leather and the lantern by the bed stay); v1.7.39 (only followers the game counts as your teammates board: dismissed Meeko stays off the boat); v1.7.38 (dismissed followers (Meeko too) are never taken aboard again, and one dismissed while aboard gets off the seat; deleting the boat takes the fishing supplies and the bed with it); v1.7.37 (the tent has its own textures (its fade had faded the rod, the stowed poles and the stowed tarp, which share them, to nothing); the tent draws solid once up, kept 4 clear of the wood; the spare oar removed); v1.7.36 (stowed: the tarp rolled and the bedroll (moved to starboard) slung under the bow thwart in leather straps, the tent poles bundled with rope along the port side forward, the spare oar flat against the port side under the thwarts; with the bed out the shipped oars lie aft of the tent (one lay through it) and the dog sits at the stern facing aft); v1.7.35 (the bed lantern under the bow thwart, clear of the bed; the dog lies down at its seat after a while (it was stood back up whenever it lay down); the tarp over the thwart knees and the bow rope too); v1.7.34 (the bed tent redone: a square way in on two posts up the hull sides and a crossbar (nothing over the bed), grey canvas over eave and ridge poles to the stem head, smooth over the gunwales and oarlocks; it fades in and out over 1.5 s with the bed, the bed too; a lit lantern on the floor by the bed"
+		"); v1.7.33 (with the bed laid out the oars lie along the gunwales in the middle and aft oarlocks; the tarp goes over the gunwales, rails and oarlocks); v1.7.32 (a canvas tarp tent over the bow while the bedroll is laid out: from the stem head aft over the bed on a ridge pole and two A-frames of skinny poles, no collision); v1.7.31 (standing up from the oars or the helm stops the row animation on the crew rower too (they were left rowing), and sends the stop again over the next second (E right as a stroke started could leave it playing); v1.7.30 (E straight on the fishing supplies goes through the boat's fishing too (marker, open water), never the bare one that turned you to the floor and left you stuck fishing; their prompt only close and standing); v1.7.29 (passengers get up and follow at 400 from the boat (about 6 m; RowRim.ini [Crew] StandUpAt); the fishing supplies placed 3 s after a load, and placed again if their 3D is not in the scene (unseen after a load); v1.7.28 (followers and the dog stay seated when you leave the oars or the helm, also when you step off the boat, until you walk 600 away, then get up and follow; the fishing and bedroll prompts only show up close (90); a fresh fishing marker each time (catches not shown after moving spots); the bedroll at 0.9); v1.7.27 (fishing: the marker is the fisher's standing spot (the fishing moves you onto it): on the floorboards where you stand, facing out over the side, so the rod is in your hands and reeling works; open water checked out to 450; the fishing supplies drawn right after a load); v1.7.26 (fishing from the boat: the fishing's own move of the player (into the water beside the boat) is undone, you stay where you stood on the deck); v1.7.25 (a drawn weapon or spell is put away before you sit at the oars or the helm, the sit waits for it (the camera broke when sitting with it out); the fishing marker on the boat's water, not 14000 down (you were taken underwater), and only on open water: land, shallows or something in the way off that side say so on the HUD); v1.7.24 (fishing from the boat: the supplies are linked to a fishing marker placed on the water off the side you face, as the Creation Club ones are (the cast went nowhere and left you stuck fishing); no fishing prompt or fishing while seated, only standing); v1.7.23 (E standing in the boat no longer sits you down: only the seat prompts do (pick up what you dropped in the boat again); the fishing supplies have their own prompt (Fish), also from the seat (you stand up and fish)); v1.7.22 (seated: your weapon sheathed and your shield taken off (back on when you stand), passengers sheathe theirs (still equipped) and take shields off too; no [E] Talk while seated and no dialogue opened by the E that sits you down or stands you up; E on the fishing supplies from the seat stands you up and starts fishing); v1.7.21 (soft collision: the bow eases to a stop at jetties, docks, longboats, wood and boulders (0.25-0.8 s, begun early enough), small rocks only bump the keel; the fishing supplies no longer fade at cell edges; passengers and the dog stay seated after you stand up until the boat settles, then stand clear of the hull (no dog thrown); fishing supplies found by the plugin's load index; the bedroll no longer respawned every frame at a cell edge; sitting down rolls the bedroll up for good (no more laying itself out when you stand or leave the boat); saved and stray beds removed after a load even with no boat out, strays over the water or by the boat swept for 30 s); v1.7.20 (oas \"grid on|off\": faint see-through walls on the world cell edges round you, your own cell brightest, the cell shown on the HUD as you cross); v1.7.19 (the rower guard never takes an engine late frame as a real move (the jump at row stop); the boat camera tried and removed"
+		"); v1.7.18 (the rower steadied on the boat before the game builds the third person camera from him, so the camera no longer shakes when the engine leaves him a frame behind; motion log reads the camera as drawn); v1.7.17 (the third person camera steadied where the game really reads it (GetTranslation): no shake when the engine leaves the rower a frame behind while rowing, no pull-in on cell hops; the rower takes row start/stop at once); v1.7.16 (motion log: the rower's pelvis, head and Camera3rd bone on the drawn boat, kinks flagged BONE); v1.7.15 (the hull's collision model, reloaded on a cell hop, hidden right before the draw too; motion log checks the drawn camera); v1.7.14 (seat guard: the rower and the third person camera held steady on the drawn boat: no 1-unit hiccup every ~1.7 s, no camera pull-in on cell hops; oas \"seatguard on|off\"); v1.7.13 (oas \"motionlog [seconds]\": a frame-by-frame log of the boat and the third person camera in RowRim_Motion.log); v1.7.12 (True Directional Movement paused while seated (its turn-toward-input wound the third person camera up until it could no longer look up or down); the orbit fix-up compares angles, never hundreds of radians; dog followers from any canine race and every current follower board); v1.7.11 (E on the bedroll rolled under the bow thwart (Unroll Bedroll) lays the game's own bedroll in the boat to sleep in, for good (oas \"bedroll roll\" to put it away); oas \"num gear\": the numpad places the bedroll and the fishing supplies (Num5 picks which), saved in [Clutter]); v1.7.10 (waterfalls and ledges as in the old Oars and Sails: row over a lip and the boat flies on with its speed, the bow dipping, and lands in the water below with a slap and a dip, or on the ground; no pull or throw; the hull feelers stay quiet with a fall ahead); v1.7.9 (look-at prompts: [E] Board Rowboat on the hull from the water, under it or beside it (you land standing on the floorboards), [E] Steer Helm on the stern seat, [E] Row Oars on the middle thwart, through invisible activators from OarsAndSails.esl; with followers aboard and you at the stern, one of them (never the dog) is picked at random to row: W/S/A/D steer them, the oars follow their hands; a 13th boat spot at Dawnstar); v1.7.8 (the Oars and Sails update: console command oas again (rr still works); boat spots: your boat waits at the docks in RowRim_Docks.ini, oas \"dock add <name>\"; old Oars and Sails boats in a save are cleared away (their chest's contents given to you) and OarsAndSails.esl stays as an obsolete stub; plankton rides the current in rivers and rapids; 3 NPC boats a lake by default; no ghosts, necromancers or templated NPCs rowing the lake boats, robed ones change into plain, fur or hide clothes; rowing speed, glide and turning saved in RowRim.ini [Row] (taken over from OarsAndSails.ini once), oas \"row turn N\"; controller: the mapped Activate button always works seated, R3 + left stick or L3 + right stick zooms ([Controls]); oas help, status, \"reset settings\"); v1.7.7 (no more \"Ride Horse\" on the hidden carrier: its activate text and activation refused through the horse base's vtable; clutter meshes fixed (each piece its own shader property), placeholder textures, keg out, rod in a holder on the hull side, fish bones sprite in the hull); v1.7.0 (boat clutter: a bucket, a spare oar under the thwarts, an ale keg under the aft thwart, a bedroll tied under the bow thwart, a fishing rod trolling off the stern, fish bones by the rope; usable Fishing Supplies (Creation Club Fishing) left of the stern seat, [Clutter]); v1.6.6 (rowing off from rest the boat and passengers drop back only a sliver (drawn 0.7 of the way to this frame, rr \"lead N\"); the player's foot IK held off at the camera update too; a hang watchdog writes our last step to the log); v1.6.5 (seated feet no longer jump up: foot IK off while seated for the player, passengers and lake boat crew"
+		"); v1.6.4 (passengers drawn on their seats on the boat as drawn (no more sliding off it while rowing); lake boat crew from a save removed after the load (their Fisherman name is not saved, so they were kept and sat on the water while new crew rowed off): the co-save keeps each part with its base); v1.6.3 (crew sit only when not seated (OAS: seated state from their animation events), no more flicker and jumps; standing floor raised 2.5 onto the floorboards; crew seats 5 higher, feet on the boards); v1.6.2 (one dog only, in the OAS dog seat in the bow, facing forward, leaning with the boat, OAS sit control); v1.6.1 (seated player and crew moved with the boat as OAS did (glued each frame, the boat drawn one frame behind), no longer pinned onto the hull; rr \"draw pin\" for the old way); v1.6.0 (crew and passengers from OAS: followers and rr \"crew add\" NPCs board with you on the thwarts (dogs on the floor), late arrivals hop in, rr crew remove|clear|list|summon; rr num: numpad seat tuning, Num5 picks who); v1.5.19 (the stern trail stronger and paler, easy to see again); v1.5.18 (wake: the V is off for now; the stern trail as wide as the hull from the start); v1.5.17 (wake: the V a faint grey-green sheen, the stern trail round foam patches each turned and sized its own way so it never repeats); v1.5.16 (the boat lays a real V wake: two arms off the bow at the Kelvin angle past both sides and a churned wash behind the stern, meshes on the water, fading out as far as the plankton wake; [Wake] On); v1.5.15 (underwater the view blues out by about 30 m: our own distance fog over the sky's while the camera is under, plankton fading with it; [Underwater] FogNear / FogFar); v1.5.14 (our own underwater filter for the camera: a clear cool teal with easier bloom so the plankton shows, through the image space override, never the water system; rr underwater on|off); v1.5.13 (oar plankton swirls wider, spreading out and fading sooner; far more glows stuck to the hull and oar blades, bigger, kept glowing with the oars out of the water); v1.5.12 (open-water plankton out to 7000 (was 3600), 1800 of them by default with the wake's fine scatter mixed in; ini key now OpenCount); v1.5.11 (plankton like the concept: finer and far denser sparkles, a wake hugging both sides that opens into a V behind, oar swirls that linger, lake boats light their own wake and oar swirls); v1.5.10 (shoreline plankton scattered in loose patches that hug and curl with the shore, no more single-file rows; open water no longer gets shore spots at sheer drops); v1.5.9 (shoreline plankton is its own pool, apart from the open water: single-file lines along the water's edge and round rocks, jetties and moored boats, washing in and out and creeping along; rr \"plankton shore N\"); v1.5.8 (the v1.5.1 underwater camera fix is off: forcing the water system underwater crashed its culling); v1.5.7 (walking far off and back no longer leaves the boat without collision: the hull is re-homed into your cell once you are back within 3000); v1.5.6 (open-water plankton thick along shorelines and round rocks, jetties and moored boats; anyone wading or swimming stirs it: bursts round them, nearby glows flare and are pushed aside); v1.5.5 (open-water plankton has its own count and size: rr \"plankton open N\", rr \"plankton opensize N\"); v1.5.4 (open-water plankton fixed (dropped the frame it was made), 600 of them at density 3; density 3 and size 0.5 by default, density up to 6, bigger pools); v1.5.3 (plankton never drawn through the hull; the open water all round has its own plankton out to 3600, fading in, drifting and fading out, farther ones drawn bigger); v1.5.2 (plankton: diffuse, slower glows under the surface next to the sparkles on it, oar swirls chaotic: two or three eddies, own spin speeds, some against the swirl, churn, some flung out"
+		"); v1.5.1 (third person camera keeps the underwater look however deep it goes; plankton drawn on the surface when seen from above, bigger, scattered over the whole hull waterline, the oar blade ones fixed); v1.5.0 (bioluminescent plankton at dusk and night: oar catches stir spiralling, sinking clusters, the hull lights a wake, a few glows cling to the hull and the oar blades; rr plankton); v1.4.4 (player boat lantern on the stern spiral, swinging, lit at night; thwarts moved 6.5 toward the bow and all oarlocks matched to the middle pair); v1.4.3 (hidden carrier horse can no longer be ridden or show a prompt); v1.4.2 (lake boat lanterns hang from the stern spiral and swing like the OAS player lantern, candle flame off, light kept); v1.4.1 (after-load purge only removes our own lake boat parts, actors deleted 2 s after disable); v1.4.0 (OAS soft physics: beach glide, ground lift and tilt, bank governor, ice, rocks, 12 feelers; lighter standing weight fore and aft; oar seat where the clip sits; no rowing from the stern; lake rowers stay seated between rows)";  // v1.7.51: in pieces (MSVC: one string literal at most 16 KB, C2026)
 	constexpr float kPi = 3.14159265f;
 	constexpr RE::FormID kRowBoatStatic = 0x00050368;  // ShipRowBoat01 (Skyrim.esm), same base OAS reads
 	// v0.5.0/v0.5.1: RowRim_Hull.nif raises the hull's own floor to model z 38 (the lake surface is at 32), so where people
@@ -676,6 +681,136 @@ namespace
 #include "Crew.inl"
 	// v1.7.0: the Fishing Supplies riding in the boat (Creation Club Fishing), see src\Mesh_Clutter.md
 #include "Gear.inl"
+
+	// Win32 GDI defines GetObject as GetObjectA/GetObjectW. That macro also
+	// rewrites Papyrus Variable::GetObject(), causing the MSVC build to fail.
+#ifdef GetObject
+#undef GetObject
+#endif
+
+	// Audio event callbacks can run outside the player update. Publish only an
+	// atomic form ID to them, not the boat's mutable state or scenegraph pointers.
+	namespace CarrierAudio
+	{
+		inline std::atomic<RE::FormID> id{ 0 };
+		inline std::atomic<unsigned> footstepsLogged{ 0 }, animationsLogged{ 0 };
+		inline bool IsCarrier(const RE::TESObjectREFR* a_ref)
+		{
+			const auto silent = id.load(std::memory_order_relaxed);
+			return silent && a_ref && a_ref->GetFormID() == silent;
+		}
+		inline bool SoundPlayTag(std::string_view a_tag)
+		{
+			auto starts = [&](std::string_view a_prefix) {
+				if (a_tag.size() < a_prefix.size()) return false;
+				for (std::size_t i = 0; i < a_prefix.size(); ++i)
+					if (std::tolower(static_cast<unsigned char>(a_tag[i])) != a_prefix[i]) return false;
+				return true;
+			};
+			return starts("soundplay") || starts("playsound");
+		}
+	}
+
+	// Boat-only fishing gate. Read CC state; never overwrite a running Papyrus
+	// stack's state/controls or delete its rod. All changes live in this .cpp.
+	namespace BoatFishing
+	{
+		struct Status
+		{
+			int state = -1;
+			bool handling = false;
+			bool ours = false;
+			RE::VMHandle reel = 0;
+			RE::BSTSmartPointer<RE::BSScript::Object> system;
+		};
+		inline float startHold = 0.0f;
+		inline bool quitAfterMenu = false;
+		inline bool watchAttempt = false, sawActiveAttempt = false;
+		inline RE::VMHandle Handle(RE::TESForm* a_form)
+		{
+			auto* vm = RE::BSScript::Internal::VirtualMachine::GetSingleton();
+			auto* policy = vm ? vm->GetObjectHandlePolicy() : nullptr;
+			return policy && a_form ? policy->GetHandleForObject(a_form->GetFormType(), a_form) : 0;
+		}
+		inline Status Read()
+		{
+			Status s;
+			auto supplies = Gear::g_items[Gear::kSupplies].ref.get();
+			auto* vm = RE::BSScript::Internal::VirtualMachine::GetSingleton();
+			if (!supplies || !vm) return s;
+			const auto h = Handle(supplies.get());
+			RE::BSTSmartPointer<RE::BSScript::Object> act;
+			if (!h || !vm->FindBoundObject(h, "ccBGSSSE001_FishingActScript", act) || !act) return s;
+			auto* p = act->GetProperty("FishingSystem");
+			auto sys = p && p->IsObject() ? p->GetObject() : RE::BSTSmartPointer<RE::BSScript::Object>{};
+			if (!sys) return s;
+			s.system = sys;
+			if (auto* v = sys->GetVariable("currentSystemState"); v && v->IsInt()) s.state = v->GetSInt();
+			if (auto* v = sys->GetVariable("handlingInputOrUpdate"); v && v->IsBool()) s.handling = v->GetBool();
+			if (auto* v = sys->GetVariable("currentFishingSupplies"); v && v->IsObject()) {
+				auto owner = v->GetObject();
+				s.ours = owner && owner->GetHandle() == h;
+			}
+			if (auto* v = sys->GetProperty("ReelLineRef"); v && v->IsObject()) {
+				auto reel = v->GetObject();
+				if (reel) s.reel = reel->GetHandle();
+			}
+			return s;
+		}
+		inline bool IsBoatReel(RE::TESObjectREFR* a_ref, const Status& a_s)
+		{
+			return a_ref && a_s.ours && a_s.reel && Handle(a_ref) == a_s.reel;
+		}
+		inline bool CanReel(const Status& a_s)
+		{
+			// CC: fishing=2, nibble=3, hooked=4. Setup/resolve/cleanup
+			// must not accept another E or show a stale continuation prompt.
+			return !a_s.handling && a_s.state >= 2 && a_s.state <= 4;
+		}
+		inline bool Idle(const Status& a_s) { return a_s.state == 0 && !a_s.handling; }
+		inline void TendFinishedAttempt()
+		{
+			if (!watchAttempt) return;
+			auto* ui = RE::UI::GetSingleton();
+			if (ui && ui->GameIsPaused()) return;
+			auto s = Read();
+			if (!s.ours) return;
+			if (s.state > 0) sawActiveAttempt = true;
+			if (!Idle(s) || (!sawActiveAttempt && startHold > 0.0f)) return;
+			// Normal CC catch cleanup leaves its large continuation triggers
+			// on the fisher. Finish that session through CC's idle cleanup:
+			// return the volumes, followers and weather, without touching loot.
+			auto* vm = RE::BSScript::Internal::VirtualMachine::GetSingleton();
+			if (vm && s.system) {
+				RE::BSTSmartPointer<RE::BSScript::IStackCallbackFunctor> callback;
+				if (vm->DispatchMethodCall(s.system, "DoCleanupTasks", RE::MakeFunctionArguments(), callback)) {
+					watchAttempt = false;
+					startHold = (std::max)(startHold, 1.0f);
+					logger::info("Fish: attempt finished; CC continuation volumes returned, look down to fish again");
+				}
+			}
+		}
+		inline void TendMenuExit()
+		{
+			if (!quitAfterMenu) return;
+			auto* ui = RE::UI::GetSingleton();
+			if (ui && (ui->GameIsPaused() || ui->IsMenuOpen(RE::StatsMenu::MENU_NAME) || ui->IsMenuOpen(RE::LevelUpMenu::MENU_NAME))) return;
+			auto s = Read();
+			if (!s.ours || Idle(s)) { quitAfterMenu = false; return; }
+			if (s.handling || s.state == 5 || s.state == 6) return;
+			// Let CC perform its own normal exit after a skills/level-up menu.
+			// Do not force controls or set its state while a result is resolving.
+			auto* vm = RE::BSScript::Internal::VirtualMachine::GetSingleton();
+			if (vm && s.system) {
+				RE::BSTSmartPointer<RE::BSScript::IStackCallbackFunctor> callback;
+				if (vm->DispatchMethodCall(s.system, "DoCleanupTasks", RE::MakeFunctionArguments(), callback)) {
+					quitAfterMenu = false;
+					startHold = 2.0f;
+					logger::info("Fish: requested CC's normal exit after the skills/level-up menu");
+				}
+			}
+		}
+	}
 	// v1.7.8: old Oars and Sails boats in saves made with OAS 1.0.x, see src\Release_v178_OAS.md
 #include "Legacy.inl"
 
@@ -1073,13 +1208,40 @@ namespace
 			RE::NiPoint3 sup{};
 			if (!player || seated_ || !havePose_ || !Gear::SuppliesSpot(sup)) return false;
 			const RE::NiPoint3 l = PlayerLocal(player);
-			return std::hypot(l.x - sup.x, l.y - sup.y) < 90.0f;
+			return std::hypot(l.x - sup.x, l.y - sup.y) < 120.0f;  // v1.7.49: 120 (90 lost it from the boat's other side)
+		}
+		bool LookingAtSupplies() const
+		{
+			if (!NearSupplies()) return false;
+			auto* cam = RE::PlayerCamera::GetSingleton();
+			RE::NiPoint3 sup{};
+			if (!cam || !cam->cameraRoot || !Gear::SuppliesSpot(sup)) return false;
+			const auto& cw = cam->cameraRoot->world;
+			const RE::NiPoint3 at = lastAt_ + lastRot_ * RE::NiPoint3{ sup.x, sup.y, sup.z + 12.0f };  // v1.7.49: the tub's mouth
+			const RE::NiPoint3 to = at - cw.translate;
+			const float distance = to.Length();
+			const RE::NiPoint3 forward = cw.rotate * RE::NiPoint3{ 0.0f, 1.0f, 0.0f };
+			// A small aiming cone around the supplies, and explicitly looking
+			// down: a big invisible CC trigger is not proof of aiming at gear.
+			// v1.7.49: a wider cone (25 deg, was 15: the tub is small and the third person camera sits off the head, so the
+			// prompt came and went) and a gentler look down
+			return distance > 1.0f && forward.z < -0.05f &&
+				(to.x * forward.x + to.y * forward.y + to.z * forward.z) / distance > 0.9063f;
+		}
+		bool CanStartBoatFishing() const
+		{
+			if (BoatFishing::quitAfterMenu || BoatFishing::startHold > 0.0f || Gear::g_useIn >= 0.0f || !LookingAtSupplies()) return false;
+			const auto s = BoatFishing::Read();
+			// Fail closed if the CC script is not bound yet. Never start over
+			// a cast, a catch result, or its still-running cleanup stack.
+			return BoatFishing::Idle(s);
 		}
 		// E on one of them (the activator's own Activate, hooked)
 		void OnPick(int a_kind)
 		{
 			auto* player = RE::PlayerCharacter::GetSingleton();
 			if (a_kind == kPickSupplies) {  // v1.7.23: the fishing supplies; v1.7.24: standing only
+				if (!CanStartBoatFishing()) return;
 				if (seated_ || !player || !havePose_) return;
 				// the cast spot: on the water 240 off the side you face, abreast of you (as the CC's own markers, 100-250 out)
 				const float hd = player->data.angle.z;
@@ -1116,7 +1278,10 @@ namespace
 				const RE::NiPoint3 outDir = right * side;
 				Gear::SetFishSpot(stand, std::atan2(outDir.x, outDir.y));
 				logger::info("Pick: E on {} (cast to the {} side)", picks_[a_kind].tag, side > 0.0f ? "right" : "left");
-				Gear::UseSuppliesSoon(0.05f);
+				if (!Gear::UseSuppliesSoon(0.05f)) return;
+				BoatFishing::startHold = 2.0f;  // bridge asynchronous script startup; no double activation
+				BoatFishing::watchAttempt = true;
+				BoatFishing::sawActiveAttempt = false;
 				fishWatch_ = 4.0f;  // v1.7.26
 				fishLocal_ = standL;  // v1.7.27: put back on the marker, never away from it
 				fishPrev_ = player->GetPosition();
@@ -1134,6 +1299,7 @@ namespace
 				return;
 			}
 			if (a_kind == kPickBedroll) {  // v1.7.11: unroll; v1.7.12: or pack it up again
+				if (!Gear::BedToggleReady()) return;  // v1.7.47: one toggle at a time (quick repeats hung the game)
 				if (Gear::BedrollOut()) {
 					Gear::BedrollCommand("roll");
 					RE::SendHUDMessage::ShowHUDMessage("Bedroll packed up");
@@ -1154,6 +1320,8 @@ namespace
 			RE::NiPoint3 at{};
 			float yaw = 0.0f;
 			bool set = false;
+			RE::NiPoint3 placedAt{};  // v1.7.50: where it was placed (moved since then by SetPosition)
+			int check = 0;            // v1.7.50: ticks to the next check while the boat is still
 		};
 		PickProxy picks_[kPickCount] = { { 0x800, "Board (hull)" }, { 0x801, "Steer (stern seat)" }, { 0x802, "Row (middle thwart)" },
 			{ 0x803, "Unroll (the bedroll under the bow thwart)" }, { 0x803, "Fish (the fishing supplies)" } };
@@ -1164,6 +1332,158 @@ namespace
 		float benchYawOff_{ 0.0f }, benchScale_[kPickCount]{ 1.0f, 1.0f, 1.0f, 1.0f, 1.0f };
 		const RE::NiAVObject* rollCulledOn_{ nullptr };  // v1.7.11: the boat model the rolled bedroll was last shown / hidden on
 		bool rollCulled_{ false };
+		// v1.7.48: our sleeping bag (hull node RowRim_Clutter_SleepingBag): on the bed's spot while the bed is laid out, hidden
+		// otherwise; the game's bedroll mesh is hidden then (Gear::g_ownBag), its furniture kept for sleeping
+		RE::NiAVObject* bagNode_{ nullptr };
+		const RE::NiAVObject* bagOn_{ nullptr };
+		// v1.7.52: the middle and aft oarlock forks (hull nodes RowRim_Oarlock_*, oarlocks.py) turn 90 deg about their pins
+		// with the oars shipped along the gunwales (shipW_), so the shafts lie between the prongs
+		RE::NiAVObject* locks_[4]{};
+		const RE::NiAVObject* locksOn_{ nullptr };
+		void TendOarlocks()
+		{
+			if (!visual_) { locksOn_ = nullptr; return; }
+			if (locksOn_ != visual_.get()) {
+				locksOn_ = visual_.get();
+				int found = 0;
+				const char* names[4] = { "RowRim_Oarlock_MidR", "RowRim_Oarlock_MidL", "RowRim_Oarlock_AftR", "RowRim_Oarlock_AftL" };
+				for (int i = 0; i < 4; ++i) found += (locks_[i] = FindShape(visual_.get(), names[i])) != nullptr;
+				logger::info("Oarlocks: {} of 4 turning oarlocks in the hull", found);
+			}
+			const float w = shipW_ * shipW_ * (3.0f - 2.0f * shipW_);
+			for (int i = 0; i < 4; ++i) {
+				auto* n = locks_[i];
+				if (!n) continue;
+				const RE::NiMatrix3 r = RzM(w * 1.5708f * (i % 2 == 0 ? 1.0f : -1.0f));
+				bool same = true;
+				for (int a = 0; a < 3 && same; ++a)
+					for (int b = 0; b < 3; ++b)
+						if (std::abs(n->local.rotate.entry[a][b] - r.entry[a][b]) > 1e-4f) { same = false; break; }
+				if (same) continue;
+				n->local.rotate = r;
+				RE::NiUpdateData data{};
+				data.flags.set(RE::NiUpdateData::Flag::kDirty);
+				n->Update(data);
+			}
+		}
+		// v1.7.52: standing in the boat the foot IK lifted a foot onto invisible collision (the prompt activators, the
+		// hidden bed and supplies): foot IK off while you are aboard, back on when you step off (seated already had it off)
+		bool footIkOff_{ false };
+		void TendFootIK()
+		{
+			auto* player = RE::PlayerCharacter::GetSingleton();
+			if (!player) return;
+			const bool want = havePose_ && PlayerAboard();
+			if (want) player->SetGraphVariableBool("bHumanoidFootIKDisable", true);
+			else if (footIkOff_ && !seated_) player->SetGraphVariableBool("bHumanoidFootIKDisable", false);
+			footIkOff_ = want;
+		}
+		// v1.7.52: slaughterfish and mudcrabs leave you, your followers, the dog and the crew alone while you are aboard (not
+		// swimming): out of combat and unaggressive, their own aggression back once you are in the water or away
+		std::unordered_map<RE::FormID, float> tamed_;
+		float tameT_{ 0.0f };
+		static bool IsFishOrCrab(RE::Actor* a)
+		{
+			auto has = [](const char* t, std::string_view w) {
+				if (!t) return false;
+				std::string s(t);
+				std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+				return s.find(w) != std::string::npos;
+			};
+			auto* race = a ? a->GetRace() : nullptr;
+			const char* rid = race ? race->formEditorID.c_str() : nullptr;
+			const char* rn = race ? race->GetFullName() : nullptr;
+			const char* bn = a && a->GetActorBase() ? a->GetActorBase()->GetName() : nullptr;
+			for (auto w : { std::string_view("slaughterfish"), std::string_view("mudcrab") })
+				if (has(rid, w) || has(rn, w) || has(bn, w)) return true;
+			return false;
+		}
+	public:
+		void UntameAll(const char* a_why)
+		{
+			int n = 0;
+			for (auto& [id, aggr] : tamed_) {
+				if (auto* a = RE::TESForm::LookupByID<RE::Actor>(id); a && !a->IsDeleted()) {
+					a->AsActorValueOwner()->SetActorValue(RE::ActorValue::kAggression, aggr);
+					++n;
+				}
+			}
+			if (n) logger::info("Calm: {} slaughterfish / mudcrab(s) as before ({})", n, a_why);
+			tamed_.clear();
+		}
+	private:
+		void TendTameFish(float a_dt)
+		{
+			if ((tameT_ -= a_dt) > 0.0f) return;
+			tameT_ = 0.5f;
+			auto* player = RE::PlayerCharacter::GetSingleton();
+			if (!player) return;
+			auto* st = player->AsActorState();
+			const bool swimming = st && st->IsSwimming();
+			const bool calm = havePose_ && PlayerAboard() && !swimming;
+			if (!calm) { if (!tamed_.empty()) UntameAll(swimming ? "you are in the water" : "you left the boat"); return; }
+			auto* pl = RE::ProcessLists::GetSingleton();
+			if (!pl) return;
+			const RE::NiPoint3 pp = player->GetPosition();
+			int fresh = 0;
+			std::vector<RE::Actor*> fish;
+			for (auto& h : pl->highActorHandles) {
+				auto a = h.get();
+				if (!a || a->IsDead() || !IsFishOrCrab(a.get()) || (a->GetPosition() - pp).Length() > 4000.0f) continue;
+				fish.push_back(a.get());
+				if (!tamed_.contains(a->GetFormID())) {
+					tamed_[a->GetFormID()] = a->AsActorValueOwner()->GetActorValue(RE::ActorValue::kAggression);
+					a->AsActorValueOwner()->SetActorValue(RE::ActorValue::kAggression, 0.0f);
+					++fresh;
+				}
+				if (a->IsInCombat()) a->StopCombat();
+			}
+			if (fish.empty()) return;
+			// whoever is fighting them on our side stops too (followers, the dog, the crew, the player)
+			auto calmOne = [&](RE::Actor* a) {
+				if (!a || !a->IsInCombat()) return;
+				auto t = a->GetActorRuntimeData().currentCombatTarget.get();
+				if (t && IsFishOrCrab(t.get())) a->StopCombat();
+			};
+			calmOne(player);
+			for (auto& h : pl->highActorHandles) {
+				auto a = h.get();
+				if (a && (Crew::IsFollower(a.get()) || Crew::IsCrew(a.get()))) calmOne(a.get());
+			}
+			if (fresh) logger::info("Calm: {} slaughterfish / mudcrab(s) leave the boat alone ({} near)", fresh, fish.size());
+		}
+
+		float bagA_{ 0.0f };  // v1.7.49: the bed fades in when laid out and out when packed up (1.2 s)
+		void TendSleepingBag(float a_dt)
+		{
+			if (!visual_) { bagNode_ = nullptr; bagOn_ = nullptr; Gear::g_ownBag = false; return; }
+			if (bagOn_ != visual_.get()) {
+				bagOn_ = visual_.get();
+				bagNode_ = FindShape(visual_.get(), "RowRim_Clutter_SleepingBag");
+				Gear::g_ownBag = bagNode_ != nullptr;
+				logger::info("Bed: {}", bagNode_ ? "our sleeping bag found in the hull, the game's bedroll mesh hidden" : "no sleeping bag in the hull, the game's bedroll drawn");
+			}
+			if (!bagNode_) return;
+			RE::NiPoint3 at{};
+			float yawDeg = 0.0f, sc = 1.0f;
+			const bool want = Gear::BedrollShown() && Gear::BedPose(at, yawDeg, sc);
+			const float before = bagA_;
+			bagA_ = std::clamp(bagA_ + (want ? 1.0f : -1.0f) * a_dt / 1.2f, 0.0f, 1.0f);
+			if (bagA_ <= 0.0f) {
+				if (before > 0.0f) SetAlphaTree(bagNode_, 1.0f);  // put back whole before it is hidden
+				if (!bagNode_->GetAppCulled()) bagNode_->SetAppCulled(true);
+				return;
+			}
+			if (bagNode_->GetAppCulled()) bagNode_->SetAppCulled(false);
+			if (bagA_ != before || bagA_ < 1.0f) SetAlphaTree(bagNode_, bagA_ >= 1.0f ? 1.0f : bagA_ * bagA_ * (3.0f - 2.0f * bagA_));
+			if (!want) return;  // fading out where it lay
+			bagNode_->local.translate = at;
+			bagNode_->local.rotate = RzM(yawDeg * 0.0174533f);
+			bagNode_->local.scale = sc;
+			RE::NiUpdateData data{};
+			data.flags.set(RE::NiUpdateData::Flag::kDirty);
+			bagNode_->Update(data);
+		}
 		RE::COL_LAYER pickLayer_{ RE::COL_LAYER::kUnidentified };
 		bool pickLayerChosen_{ false };
 		std::string benchModel_;
@@ -1264,14 +1584,35 @@ namespace
 			for (auto& pk : picks_) DropPick(pk);
 		}
 
+		// v1.7.50: a proxy left behind: its 3D more than 8 from its spot
+		static bool PickStale(RE::TESObjectREFR* a_ref, const RE::NiPoint3& a_at)
+		{
+			if (!a_ref) return false;
+			auto* root = a_ref->Get3D();
+			return root && (root->world.translate - a_at).Length() > 8.0f;
+		}
 		void TendPick(PickProxy& a_p, int a_kind, bool a_want, const RE::NiPoint3& a_at, float a_yaw)
 		{
 			auto ref = a_p.h.get();
 			if (ref && ref->IsDeleted()) { a_p.h = {}; a_p.id = 0; ref = nullptr; }
 			if (!a_want) { if (ref) DropPick(a_p); return; }
-			if (ref && (std::hypot(a_at.x - a_p.at.x, a_at.y - a_p.at.y) > 20.0f || std::abs(a_at.z - a_p.at.z) > 40.0f || std::abs(a_yaw - a_p.yaw) > 0.1f)) {
-				DropPick(a_p);  // the boat moved: placed again
-				ref = nullptr;
+			if (ref && (std::hypot(a_at.x - a_p.at.x, a_at.y - a_p.at.y) > 4.0f || std::abs(a_at.z - a_p.at.z) > 6.0f || std::abs(a_yaw - a_p.yaw) > 0.03f)) {
+				// v1.7.49: the boat moved: the proxy moved with it (it was deleted and placed again: no prompt until the new
+				// one's 3D came in, so the [E] went missing whenever the boat drifted or bobbed)
+				if (std::hypot(a_at.x - a_p.at.x, a_at.y - a_p.at.y) > 600.0f) { DropPick(a_p); ref = nullptr; }
+				// v1.7.50: once the boat is still, a proxy that was carried more than 30 from where it was placed, or whose 3D
+				// is not where it should be, is placed fresh: carried along by
+				// SetPosition its collision could stay behind (the [E] found somewhere else in the boat after rowing)
+				else if (std::abs(speed_) < 5.0f && ((a_at - a_p.placedAt).Length() > 30.0f || PickStale(ref.get(), a_at))) {
+					DropPick(a_p);
+					ref = nullptr;
+				}
+				else {
+					ref->SetPosition(a_at);
+					ref->SetAngle(RE::NiPoint3{ 0.0f, 0.0f, a_yaw });
+					a_p.at = a_at;
+					a_p.yaw = a_yaw;
+				}
 			}
 			if (!ref) {
 				auto* player = RE::PlayerCharacter::GetSingleton();
@@ -1284,9 +1625,14 @@ namespace
 				a_p.h = placed->GetHandle();
 				a_p.id = placed->GetFormID();
 				a_p.at = a_at;
+				a_p.placedAt = a_at;
 				a_p.yaw = a_yaw;
 				a_p.set = false;
 				return;
+			}
+			if (ref && a_p.set && std::abs(speed_) < 5.0f && --a_p.check <= 0) {  // v1.7.50: still: checked once a second
+				a_p.check = 10;
+				if ((a_at - a_p.placedAt).Length() > 30.0f || PickStale(ref.get(), a_at)) { DropPick(a_p); return; }
 			}
 			if (a_p.set) return;
 			auto* root = ref->Get3D();
@@ -1322,7 +1668,7 @@ namespace
 			bool supOut = picks_[kPickSupplies].base && Gear::SuppliesSpot(sup);
 			auto nearL = [&](const RE::NiPoint3& a_l) {  // v1.7.28: the gear prompts only within reach (90 across the deck)
 				const RE::NiPoint3 l = PlayerLocal(player);
-				return std::hypot(l.x - a_l.x, l.y - a_l.y) < 90.0f;
+				return std::hypot(l.x - a_l.x, l.y - a_l.y) < 120.0f;  // v1.7.49: 120
 			};
 			supOut = supOut && nearL(sup);
 			TendPick(picks_[kPickSupplies], kPickSupplies, supOut, lastAt_ + lastRot_ * RE::NiPoint3{ sup.x, sup.y, sup.z + 6.0f }, by);
@@ -1415,6 +1761,7 @@ namespace
 				const bool okC = carrier && a_intfc->ResolveFormID(carrier, c);
 				refId_ = okH ? h : 0;
 				carrierId_ = okC ? c : 0;
+				CarrierAudio::id.store(carrierId_, std::memory_order_relaxed);
 				pos_ = { v[0], v[1], v[2] };
 				yaw_ = v[3];
 				if (version >= 2) {
@@ -1442,6 +1789,9 @@ namespace
 
 		void Forget()
 		{
+			BoatFishing::startHold = 0.0f;
+			BoatFishing::quitAfterMenu = false;
+			BoatFishing::watchAttempt = BoatFishing::sawActiveAttempt = false;
 			for (auto& pk : picks_) { pk.h = {}; pk.id = 0; pk.set = false; }  // v1.7.9: the saved ones are swept (TendPicks)
 			picksSweep_ = true;
 			dockWait_ = 6.0f;  // v1.7.8: the save's own boat is restored first
@@ -1462,6 +1812,7 @@ namespace
 			visual_.reset();
 			wbShown_ = nullptr;
 			carrierId_ = 0;
+			CarrierAudio::id.store(0, std::memory_order_relaxed);
 			helm_ = false;
 			refId_ = 0;
 			body_ = nullptr;
@@ -1817,8 +2168,15 @@ namespace
 			if (r.size > 0.0f && (tillerT_ -= a_dt) <= 0.0f) {
 				tillerT_ = moving ? std::clamp(r.spread / spd, 0.07f, 0.4f) * (turning ? 0.6f : 1.0f) : Plankton::Rand(1.2f, 2.6f) * (turning ? 0.5f : 1.0f);
 				const float sc = moving || turning ? 0.03f + 0.04f * s01 + (turning ? 0.015f : 0.0f) : 0.018f;
-				Fx::Ripple(at(Plankton::Rand(-2.0f, 2.0f), r.y), sc * r.size);
+				Fx::Ripple(at(0.0f, r.y), sc * r.size);  // v1.7.53: dead centre (was +-2 at random)
 			}
+			// v1.7.53: the hull's ripple: the tiller's own, as big and as often, dead centre under the rower's seat
+			if (r.size > 0.0f && (bodyT_ -= a_dt) <= 0.0f) {
+				bodyT_ = moving ? std::clamp(r.spread / spd, 0.07f, 0.4f) * (turning ? 0.6f : 1.0f) : Plankton::Rand(1.2f, 2.6f) * (turning ? 0.5f : 1.0f);
+				const float sc = moving || turning ? 0.03f + 0.04f * s01 + (turning ? 0.015f : 0.0f) : 0.018f;
+				Fx::Ripple(at(0.0f, rowSeat_.y), sc * r.size);
+			}
+			if (true) return;  // v1.7.53: the v1.7.44 side spots are off (kept below for oas "num hull")
 			// the hull (v1.7.44: its own settings, oas "num hull"): spots spread evenly from the bow thwart to the aft
 			// thwart, each side in turn with the stem, a little off each spot so it never repeats
 			Wake::LoadHull();
@@ -2667,8 +3025,16 @@ namespace
 				rollCulled_ = Gear::BedrollShown();
 				if (auto* roll = FindShape(visual_.get(), "RowRim_Clutter_Bedroll")) roll->SetAppCulled(rollCulled_);
 			}
+			TendSleepingBag(dt);  // v1.7.48
 			TendOars(dt);  // v0.8.4: here, after the player's update, as OAS TendBakedBoatOars (the camera hook never called it)
 			TendHullRipples(dt);  // v1.7.43
+			TendOarlocks();       // v1.7.52
+			TendFootIK();         // v1.7.52
+			TendTameFish(dt);     // v1.7.52
+			if (havePose_) {  // v1.7.54: bumping the lake boats
+				const float hit = LakeBoats::BumpPlayerBoat(pos_, yaw_ + (bowFlip_ ? kPi : 0.0f), speed_, dt);
+				if (hit > 0.0f) dipVel_ -= 45.0f * hit;
+			}
 			MotionA1();    // v1.7.13
 
 			LogFrame(false, dt);
@@ -2706,7 +3072,7 @@ namespace
 			float mRoll = 0.0f, mPitch = 0.0f, mHeave = 0.0f;
 			BoatMotion(dt, mRoll, mPitch, mHeave);  // v0.8.0: OAS idle rock, stroke squat, turn lean and the player's weight
 			roll_ = ampRoll_ * std::sin(w * t_) + mRoll;      // rrt "rock N" (the step 1 test rock) on top
-			pitch_ = ampPitch_ * std::sin(w * 0.73f * t_ + 1.1f) + mPitch + fallPitch_ * (bowFlip_ ? -1.0f : 1.0f);  // v1.7.10: the bow dips in a fall
+			pitch_ = ampPitch_ * std::sin(w * 0.73f * t_ + 1.1f) + mPitch;
 			heave_ = ampHeave_ * std::sin(w * 1.25f * t_ + 0.4f) + mHeave;
 
 			a_rot = RzM(yaw_) * (RxM(pitch_) * RyM(roll_));
@@ -3092,6 +3458,29 @@ namespace
 			a_actor->extraList.SetExtraFlags(RE::ExtraFlags::Flag::kBlockActivateText, true);
 		}
 
+		// Clear existing native handles (including sounds started before spawn
+		// returned). New animation/footstep sounds are blocked by the hooks below.
+		static void MuteCarrier(RE::Actor* a_actor)
+		{
+			auto* process = a_actor ? a_actor->GetActorRuntimeData().currentProcess : nullptr;
+			auto* high = process ? process->high : nullptr;
+			// v1.7.52: the horse's breathing is its creature "awake" loop (and its movement loop), kept on the actor as extra
+			// data, not in the process's sound handles: held at volume 0 every frame (stopped, the game started it again)
+			if (a_actor) {
+				if (auto* aw = a_actor->extraList.GetByType<RE::ExtraCreatureAwakeSound>(); aw && aw->handle.IsValid()) aw->handle.SetVolume(0.0f);
+				if (auto* mv = a_actor->extraList.GetByType<RE::ExtraCreatureMovementSound>(); mv && mv->handle.IsValid()) mv->handle.SetVolume(0.0f);
+				if (auto* xs = a_actor->extraList.GetByType<RE::ExtraSound>(); xs && xs->handle.IsValid()) xs->handle.SetVolume(0.0f);
+			}
+			if (!high) return;
+			for (auto& sound : high->soundHandles) {
+				if (sound.IsValid()) {
+					sound.SetVolume(0.0f);
+					sound.Stop();
+					sound = RE::BSSoundHandle{};
+				}
+			}
+		}
+
 		void SpawnCarrier(const RE::NiPoint3& a_at)
 		{
 			auto* player = RE::PlayerCharacter::GetSingleton();
@@ -3101,14 +3490,16 @@ namespace
 			auto* actor = ref ? ref->As<RE::Actor>() : nullptr;
 			if (!actor) { Print("RowRim: carrier spawn failed"); return; }
 			carrierId_ = actor->GetFormID();
+			CarrierAudio::id.store(carrierId_, std::memory_order_relaxed);
 			actor->SetCollision(false);  // no capsule in the boat, nothing to bump or pick
 			actor->EnableAI(carrierAI_);
 			ShieldCarrier(actor);
+			MuteCarrier(actor);
 			actor->SetPosition(CarrierSpot(a_at), true);
 			visual_.reset();
 			wbShown_ = nullptr;
 			hiddenKids_ = 0;
-			Print(std::format("RowRim: carrier {:08X} ('{}', base {:08X}) placed {} under the boat, AI {}", carrierId_, base->GetName(), base->GetFormID(),
+			Print(std::format("RowRim: carrier {:08X} ('{}', base {:08X}) placed {} units under the boat, audio event gate on, AI {}", carrierId_, base->GetName(), base->GetFormID(),
 				static_cast<int>(kCarrierDepth), carrierAI_ ? "on" : "off"));
 		}
 
@@ -3126,6 +3517,7 @@ namespace
 				LakeBoats::DeleteActorLater(a);  // v1.4.1: disabled now, deleted 2 s later (never in the same frame)
 			}
 			carrierId_ = 0;
+			CarrierAudio::id.store(0, std::memory_order_relaxed);
 		}
 
 		// The boat model: a clone of the hull's own nif, physics stripped (the hull ref keeps the collision).
@@ -3255,6 +3647,8 @@ namespace
 		{
 			auto* a = carrierId_ ? RE::TESForm::LookupByID<RE::Actor>(carrierId_) : nullptr;
 			if (!a || a->IsDeleted()) return;
+			CarrierAudio::id.store(carrierId_, std::memory_order_relaxed);
+			MuteCarrier(a);  // also covers restored saves and process/3D reloads
 			if (!aiApplied_) { a->EnableAI(carrierAI_); a->SetCollision(false); ShieldCarrier(a); aiApplied_ = true; }
 			a->SetPosition(CarrierSpot(a_at), true);
 			// v0.3.2: with AI off, SetPosition moved the actor (its cell followed) but not its 3D: the horse's model stayed at
@@ -3315,7 +3709,7 @@ namespace
 		RE::NiPointer<RE::NiNode> bedLamp_;
 		RE::ObjectRefHandle bedLight_;
 		float bedLightCellTimer_{ 0.0f };
-		static inline const RE::NiPoint3 kBedLampAt{ 40.0f, 134.0f, 40.4f };  // v1.7.35: on the floorboards at the bow thwart's forward edge, starboard (clear of the bed)
+		static inline const RE::NiPoint3 kBedLampAt{ 32.0f, 150.0f, 40.4f };  // v1.7.52: 16 further forward, in a little (it clipped the bow thwart)  // v1.7.35: on the floorboards at the bow thwart's forward edge, starboard (clear of the bed)
 		// v1.7.37: blending only while it fades: fully up it draws solid (blended, the wood just under the cloth showed
 		// through in spots)
 		static void SetAlphaTree(RE::NiAVObject* a_obj, float a_alpha, int a_depth = 0)
@@ -3858,7 +4252,7 @@ namespace
 			{
 				auto* r = Crew::Rower();  // v1.7.9: a follower aboard rows for you
 				Print(r ? std::format("RowRim: at the stern seat ({:.0f} {:.0f} {:.0f}, sit anim {}). {} rows: W/S/A/D steer them. E stands up", s.x, s.y, s.z, ok ? "ok" : "refused", r->GetName())
-				        : std::format("RowRim: at the stern seat ({:.0f} {:.0f} {:.0f}, sit anim {}). No rower: bring a follower, or sit on the middle seat to row. E stands up", s.x, s.y, s.z, ok ? "ok" : "refused"));
+				        : std::string("No rower, move to rower seat or have crew"));  // v1.7.54
 			}
 		}
 
@@ -3949,7 +4343,7 @@ namespace
 			if (seated_ && seatKind_ == SeatKind::kHelm) {
 				if ((f || b || l || r) && noRowerNote_ <= 0.0f) {
 					noRowerNote_ = 6.0f;
-					RE::SendHUDMessage::ShowHUDMessage("No rower. Bring a follower, or sit on the middle seat to row (E there).");
+					RE::SendHUDMessage::ShowHUDMessage("No rower, move to rower seat or have crew");  // v1.7.54
 				}
 				f = b = l = r = false;
 			}
@@ -4172,22 +4566,13 @@ namespace
 			a_layer = id;
 			return true;
 		}
-		// ---- v1.7.10: waterfalls and ledges (the old OAS fall, Parts 33-37, before the v1.0.38 pull and throw). Row off a
-		// lip and the boat flies: it keeps its forward speed, falls under gravity with the bow dipping, and lands in the lower
-		// water with a slap (a dip, some speed lost) or on the ground below (most of the speed lost). No current pulls you to
-		// the edge: you only go over if you row over. A lip is a lower water plane just ahead of the bow (40 down or more),
-		// or the water running out at a ledge about level with it with the ground 80 or more below further on. Near a fall
-		// ahead the hull feelers stay quiet, so its rocks and spray meshes never stop the boat at the lip. ----
-		static constexpr float kFallGravity = 600.0f;     // OAS kSkimGravity
+		// ---- v1.7.46: waterfalls and ledges block the boat (the v1.7.10 fall is gone: no flying off a lip). A lip is a lower
+		// water plane just ahead of the bow, or astern when backing (40 down or more), or the water running out at a ledge
+		// about level with it with the ground 80 or more below further on. Rowing toward one stops the boat at the lip; she
+		// can still turn and row away. ----
 		static constexpr float kFallDrop = 40.0f;         // OAS kSkimDropThreshold: a lower water plane
 		static constexpr float kFallCliff = 80.0f;        // OAS kSkimCliffDrop: ground this far under the water = a ledge
-		static constexpr float kFallGrace = 0.35f;        // OAS kSkimDropGrace: no landing in the first moments (the lip)
-		static constexpr float kFallMinSpeed = 150.0f;    // goes over the lip at least this fast (clears it)
-		bool airborne_{ false };
-		float vz_{ 0.0f }, fallTime_{ 0.0f }, fallFromWater_{ 0.0f }, fallPitch_{ 0.0f };
-		RE::NiPoint3 fallFrom_{};
-		float fallAheadTimer_{ 0.0f };
-		bool fallAhead_{ false };
+		float lipMsgCd_{ 0.0f };
 
 		// a lower water plane right ahead of the bow (OAS SkimDropAhead)
 		bool DropAhead(const RE::NiPoint3& a_fwd, float a_tip, float& a_lower) const
@@ -4219,80 +4604,20 @@ namespace
 			}
 			return false;
 		}
-		void Launch(const char* a_what, float a_below)
+		// at a lip: stopped where she is, a small knock back, told once in a while
+		void BlockAtLip(const char* a_what, const RE::NiPoint3& a_dirv, float a_below)
 		{
-			airborne_ = true;
-			fallTime_ = 0.0f;
-			fallFrom_ = pos_;
-			fallFromWater_ = waterZ_;
-			if (speed_ < kFallMinSpeed) speed_ = kFallMinSpeed;
-			vz_ = 80.0f + 0.12f * speed_;  // a small hop off the lip
-			feelStopTimer_ = 0.0f;
-			feelPushX_ = feelPushY_ = 0.0f;
-			logger::info("Fall: {} at ({:.0f},{:.0f}), water {:.0f}, below {:.0f}, speed {:.0f}", a_what, pos_.x, pos_.y, waterZ_, a_below, speed_);
-		}
-		// every frame in the air (the heading and speed move it along in StepTarget)
-		void FallStep(float a_dt)
-		{
-			fallTime_ += a_dt;
-			const float oldVz = vz_;
-			vz_ -= kFallGravity * a_dt;
-			pos_.z += (oldVz + vz_) * 0.5f * a_dt;
-			fallPitch_ += (std::clamp(std::atan2(vz_, (std::max)(80.0f, std::abs(speed_))), -0.6f, 0.15f) - fallPitch_) * (std::min)(1.0f, 4.0f * a_dt);
-			auto* tes = RE::TES::GetSingleton();
-			if (auto* cell = tes ? tes->GetCell(pos_) : nullptr; !cell || !cell->IsAttached()) speed_ = 0.0f;  // never into unloaded space
-			if (fallTime_ < kFallGrace || vz_ >= 0.0f) return;
-			float w = 0.0f;
-			int why = 0;
-			const bool wet = BoatWaterAt(pos_, w, why) || (why == 3 && WaterAt(pos_, w));
-			if (wet && w > fallFromWater_ - 20.0f && pos_.z <= w + kWaterZ + heightOff_) {
-				// v1.7.45: a false lip (the same water under it, open water): back on the waterline, no nose dive to the bed
-				pos_.z = w + kWaterZ + heightOff_;
-				dipVel_ = -(std::min)(-vz_ * 0.2f, 60.0f);
-				waterZ_ = w;
-				haveWater_ = true;
-				waterTimer_ = 0.25f;
-				airborne_ = false;
-				vz_ = 0.0f;
-				fallPitch_ *= 0.3f;
-				logger::info("Fall: false alarm, same water under it ({:.0f}), afloat again", w);
-				return;
+			const bool wasMoving = std::abs(speed_) > 20.0f;
+			speed_ = 0.0f;
+			if (wasMoving) {  // only on the first touch (held there while you keep rowing, never shoved back each frame)
+				pos_.x -= a_dirv.x * 2.0f;
+				pos_.y -= a_dirv.y * 2.0f;
+				dipVel_ = -20.0f;
 			}
-			if (wet && w <= fallFromWater_ - 20.0f && pos_.z <= w + kWaterZ + heightOff_) {
-				// the water below: a slap, a buoyant dip, some speed lost, afloat again
-				const float impact = -vz_;
-				const float hard = std::clamp(impact / 600.0f, 0.0f, 1.0f);
-				pos_.z = w + kWaterZ + heightOff_;
-				dipVel_ = -std::clamp(impact * 0.5f, 60.0f, 450.0f);
-				speed_ *= 1.0f - 0.2f * (std::max)(0.25f, hard);
-				waterZ_ = w;
-				haveWater_ = true;
-				waterTimer_ = 0.25f;
-				airborne_ = false;
-				vz_ = 0.0f;
-				logger::info("Fall: water landing {:.0f} down after {:.1f} s, impact {:.0f}, speed {:.0f}", fallFromWater_ - w, fallTime_, impact, speed_);
-				return;
-			}
-			float land = 0.0f;
-			if (tes && tes->GetLandHeight(pos_, land) && std::isfinite(land) && pos_.z <= land + 2.0f) {
-				// the ground below: down on it, most of the speed gone; the beach and ground code take it from there
-				pos_.z = land + 2.0f;
-				speed_ *= 0.4f;
-				dipVel_ = -std::clamp(-vz_ * 0.3f, 40.0f, 300.0f);
-				airborne_ = false;
-				vz_ = 0.0f;
-				waterTimer_ = 0.0f;
-				logger::info("Fall: landed on the ground after {:.1f} s, speed {:.0f}", fallTime_, speed_);
-				return;
-			}
-			if (fallTime_ > 8.0f || fallFrom_.z - pos_.z > 6000.0f) {
-				// nothing under it: back where it went over, stopped
-				pos_ = fallFrom_;
-				speed_ = 0.0f;
-				airborne_ = false;
-				vz_ = 0.0f;
-				waterTimer_ = 0.0f;
-				logger::info("Fall: nothing to land on, put back at the lip");
+			if (lipMsgCd_ <= 0.0f) {
+				lipMsgCd_ = 4.0f;
+				RE::SendHUDMessage::ShowHUDMessage("A drop ahead: the boat won't go over");
+				logger::info("Lip: {} at ({:.0f},{:.0f}), water {:.0f}, below {:.0f}: blocked", a_what, pos_.x, pos_.y, waterZ_, a_below);
 			}
 		}
 
@@ -4301,22 +4626,7 @@ namespace
 			const float hd = yaw_ + (bowFlip_ ? kPi : 0.0f);
 			const RE::NiPoint3 fwd{ std::sin(hd), std::cos(hd), 0.0f };
 			const RE::NiPoint3 right{ fwd.y, -fwd.x, 0.0f };
-			// v1.7.10: in the air off a waterfall or a ledge
-			if (airborne_) { FallStep(a_dt); return; }
-			fallPitch_ *= std::exp(-3.0f * a_dt);
-			// a fall ahead (a lower water plane 150-550 on): the hull feelers keep quiet so its rocks never stop the boat
-			if ((fallAheadTimer_ -= a_dt) <= 0.0f) {
-				fallAheadTimer_ = 0.25f;
-				fallAhead_ = false;
-				if (haveWater_ && speed_ > 20.0f) {
-					for (float d : { 150.0f, 250.0f, 350.0f, 450.0f, 550.0f }) {
-						const RE::NiPoint3 p{ pos_.x + fwd.x * d, pos_.y + fwd.y * d, pos_.z };
-						float lw = 0.0f;
-						int lwhy = 0;
-						if (BoatWaterAt(p, lw, lwhy) && waterZ_ - lw >= kFallDrop) { fallAhead_ = true; break; }
-					}
-				}
-			}
+			lipMsgCd_ = (std::max)(0.0f, lipMsgCd_ - a_dt);
 			// the water under the boat, 4 times a second; the hull eases to its waterline there
 			if ((waterTimer_ -= a_dt) <= 0.0f) {
 				waterTimer_ = 0.25f;
@@ -4341,12 +4651,14 @@ namespace
 			float w = 0.0f;
 			int why = 0;
 			const bool wet = BoatWaterAt(tipAt, w, why);
-			// v1.7.10: rowing forward over a lip: a lower water plane at the bow, or a ledge with the ground falling away
-			if (dir > 0.0f && haveWater_ && speed_ > 40.0f && !onBeach_) {
+			// v1.7.46: heading for a lip (forward or backing): a lower water plane at the bow / stern, or a ledge with the
+			// ground falling away: blocked there, never over it
+			if (haveWater_ && !onBeach_) {
+				const RE::NiPoint3 dv{ fwd.x * dir, fwd.y * dir, 0.0f };
 				float below = 0.0f;
-				if (wet && waterZ_ - w >= kFallDrop) { Launch("waterfall (lower water at the bow)", w); return; }
-				if (!wet && DropAhead(fwd, tip, below)) { Launch("waterfall (lower water past the lip)", below); return; }
-				if (!wet && (why == 2 || why == 3) && CliffAhead(fwd, tip, below)) { Launch("ledge (the ground falls away)", below); return; }
+				if (wet && waterZ_ - w >= kFallDrop) { BlockAtLip("waterfall (lower water at the tip)", dv, w); return; }
+				if (!wet && DropAhead(dv, tip, below)) { BlockAtLip("waterfall (lower water past the lip)", dv, below); return; }
+				if (!wet && (why == 2 || why == 3) && CliffAhead(dv, tip, below)) { BlockAtLip("ledge (the ground falls away)", dv, below); return; }
 			}
 			if (!wet && why == 3) {
 				// v1.4.0: OAS beach glide: the tip runs up the sand bleeding speed (land crawl 120, slide decel 300/s), heavy drag
@@ -4674,7 +4986,7 @@ namespace
 		{
 			for (auto& c : feelReactCd_) c = (std::max)(0.0f, c - a_dt);
 			feelLogCd_ = (std::max)(0.0f, feelLogCd_ - a_dt);
-			if (!haveWater_ || rideTime_ < 3.0f || fallAhead_ || airborne_) {  // v1.7.10: quiet near a fall and in the air
+			if (!haveWater_ || rideTime_ < 3.0f) {
 				for (auto& t : feelTouch_) t = false;
 				return;
 			}
@@ -5105,10 +5417,8 @@ namespace
 		int hiddenKids_{ 0 };
 		float hideTimer_{ 0.0f };
 		int hideLogs_{ 0 };
-		// v0.3.1: 220 (was 2000): 2000 down put the horse under the lake bed; once frozen (AI off) its bound was no longer
-		// rebuilt and the whole horse, boat model included, was culled as an underground object. Just under the keel now:
-		// the hull's collision is between it and anyone on deck, so it cannot be picked or ridden.
-		static constexpr float kCarrierDepth = 220.0f;  // v0.2.5's mobile list did not refile it (the engine put it back in an exterior cell)
+		// Original carrier placement restored; no elevated actor or stretched bounds.
+		static constexpr float kCarrierDepth = 220.0f;
 		int grafts_{ 0 };
 		RE::NiPointer<RE::NiAVObject> heldOld_;
 		float heldTime_{ 0.0f };
@@ -5338,11 +5648,17 @@ namespace
 	{
 		static void Thunk(RE::FirstPersonState* a_this, RE::BSTSmartPointer<RE::TESCameraState>& a_nextState)
 		{
+			Stage("first person camera: PinRower");
 			TestHull::Get().PinRower();  // v1.2.3
+			Stage("first person camera: game's original Update");
 			func(a_this, a_nextState);
+			Stage("first person camera: LatePlace");
 			TestHull::Get().LatePlace("first person camera update");
+			Stage("first person camera: lake boats");
 			LakeBoats::LatePlace();  // v1.3.1
+			Stage("first person camera: fog");
 			Underwater::FogTend();   // v1.5.15: the underwater fog again, right before drawing
+			Stage("after the first person camera update (the game draws)");
 		}
 		static inline REL::Relocation<decltype(Thunk)> func;
 		static void Install()
@@ -5357,19 +5673,29 @@ namespace
 	{
 		static void Thunk(RE::ThirdPersonState* a_this, RE::BSTSmartPointer<RE::TESCameraState>& a_nextState)
 		{
+			Stage("third person camera: CamFrame");
 			TestHull::Get().CamFrame();  // v1.7.17
+			Stage("third person camera: ResetAnimRotation before Update");
 			TestHull::Get().ResetAnimRotation(a_this);
+			Stage("third person camera: PinRower");
 			TestHull::Get().PinRower();  // v1.2.3: before the game places the camera from his bones
+			Stage("third person camera: MotionCamPre");
 			TestHull::Get().MotionCamPre(a_this);   // v1.7.13
+			Stage("third person camera: SeatGuard");
 			TestHull::Get().SeatGuard(a_this);      // v1.7.18: before the game's camera update (it follows his 3D)
+			Stage("third person camera: game's original Update");
 			func(a_this, a_nextState);
+			Stage("third person camera: MotionCamGame");
 			TestHull::Get().MotionCamGame(a_this);  // v1.7.13
+			Stage("third person camera: ResetAnimRotation after Update");
 			TestHull::Get().ResetAnimRotation(a_this);  // OAS CamAfterStateUpdate: before and after the game's
+			Stage("third person camera: CamTend");
 			TestHull::Get().CamTend(a_this);            // v1.2.0
 			Stage("third person camera: LatePlace");
 			TestHull::Get().LatePlace("third person camera update");  // v1.1.1
 			Stage("third person camera: lake boats");
 			LakeBoats::LatePlace();  // v1.3.1
+			Stage("third person camera: MotionB");
 			TestHull::Get().MotionB(a_this);  // v1.7.13: motion log line
 			Stage("third person camera: fog");
 			Underwater::FogTend();   // v1.5.15: the underwater fog again, right before drawing
@@ -5396,6 +5722,60 @@ namespace
 		{
 			REL::Relocation<std::uintptr_t> vtbl{ RE::VTABLE_ThirdPersonState[0] };
 			func = vtbl.write_vfunc(REL::Module::IsVR() ? 6 : 5, Thunk);
+		}
+	};
+
+	// Horse idle/breath sounds may be dispatched as footstep animation tags,
+	// notably with USSEP's horse behavior fixes (AFKTrack #29343 / #34655).
+	// Skip only the carrier in the native sound consumer, not all horses and not
+	// the whole event dispatcher. Normal actors retain the previous hook chain.
+	struct CarrierFootstepAudioHook
+	{
+		static RE::BSEventNotifyControl Thunk(RE::BGSImpactManager* a_this,
+			const RE::BGSFootstepEvent* a_event, RE::BSTEventSource<RE::BGSFootstepEvent>* a_source)
+		{
+			if (a_event && CarrierAudio::id.load(std::memory_order_relaxed)) {
+				auto actor = a_event->actor.get();
+				if (CarrierAudio::IsCarrier(actor.get())) {
+					if (CarrierAudio::footstepsLogged.fetch_add(1, std::memory_order_relaxed) < 24)
+						logger::info("Carrier audio: BLOCKED footstep/idle tag '{}' actor {:08X}", a_event->tag.c_str(), actor->GetFormID());
+					return RE::BSEventNotifyControl::kContinue;
+				}
+			}
+			return func(a_this, a_event, a_source);
+		}
+		static inline REL::Relocation<decltype(Thunk)> func;
+		static void Install()
+		{
+			REL::Relocation<std::uintptr_t> vtbl{ RE::VTABLE_BGSImpactManager[0] };
+			func = vtbl.write_vfunc(1, Thunk);
+		}
+	};
+
+	// Vanilla SoundPlay annotations are separate from mapped footstep tags.
+	// Actor/Character's third vtable is TESObjectREFR's animation-event sink; the incoming
+	// this pointer is that sink subobject, so preserve it when calling the original.
+	template <bool kCharacter>
+	struct CarrierAnimationAudioHook
+	{
+		static RE::BSEventNotifyControl Thunk(RE::BSTEventSink<RE::BSAnimationGraphEvent>* a_this,
+			const RE::BSAnimationGraphEvent* a_event, RE::BSTEventSource<RE::BSAnimationGraphEvent>* a_source)
+		{
+			if (a_event && CarrierAudio::IsCarrier(a_event->holder)) {
+				const char* tag = a_event->tag.c_str();
+				const bool block = CarrierAudio::SoundPlayTag(tag ? std::string_view(tag) : std::string_view{});
+				if (CarrierAudio::animationsLogged.fetch_add(1, std::memory_order_relaxed) < 24)
+					logger::info("Carrier audio: {} animation '{}' payload '{}' actor {:08X}",
+						block ? "BLOCKED" : "observed", tag ? tag : "", a_event->payload.c_str(), a_event->holder->GetFormID());
+				if (block) return RE::BSEventNotifyControl::kContinue;
+			}
+			return func(a_this, a_event, a_source);
+		}
+		static inline REL::Relocation<decltype(Thunk)> func;
+		static void Install()
+		{
+			REL::Relocation<std::uintptr_t> vtbl{ kCharacter ? RE::VTABLE_Character[2] : RE::VTABLE_Actor[2] };
+			func = vtbl.write_vfunc(1, Thunk);
 		}
 	};
 
@@ -5448,14 +5828,24 @@ namespace
 		// v1.7.12: the bedroll spot reads "Unroll Bedroll" or, with the bedroll laid out, "Pack Up Bedroll" (ACTI vtable 4C)
 		static bool Text(RE::TESObjectACTI* a_this, RE::TESObjectREFR* a_ref, RE::BSString& a_dst)
 		{
+			const auto fishing = BoatFishing::Read();
+			if (BoatFishing::IsBoatReel(a_ref, fishing)) {
+				if (BoatFishing::CanReel(fishing)) return text(a_this, a_ref, a_dst);
+				if (!TestHull::Get().CanStartBoatFishing()) { a_dst = ""; return false; }
+				a_dst = "Fish\nFishing Supplies";
+				return true;
+			}
 			const int kind = TestHull::Get().PickKindOf(a_ref);
 			if (kind == TestHull::kPickBedroll) {
 				a_dst = Gear::BedrollOut() ? "Pack Up\nBedroll" : "Unroll\nBedroll";
 				return true;
 			}
-			if (kind == TestHull::kPickSupplies) { a_dst = "Fish\nFishing Supplies"; return true; }  // v1.7.23
+			if (kind == TestHull::kPickSupplies) {
+				if (!TestHull::Get().CanStartBoatFishing()) { a_dst = ""; return false; }
+				a_dst = "Fish\nFishing Supplies"; return true;
+			}
 			if (Gear::IsSupplies(a_ref)) {  // v1.7.30: the supplies themselves: the same prompt, only close and standing
-				if (!TestHull::Get().NearSupplies()) return false;
+				if (!TestHull::Get().CanStartBoatFishing()) { a_dst = ""; return false; }
 				a_dst = "Fish\nFishing Supplies";
 				return true;
 			}
@@ -5464,6 +5854,16 @@ namespace
 		static inline REL::Relocation<decltype(Text)> text;
 		static bool Activate(RE::TESObjectACTI* a_this, RE::TESObjectREFR* a_target, RE::TESObjectREFR* a_activator, std::uint8_t a_arg3, RE::TESBoundObject* a_object, std::int32_t a_count)
 		{
+			if (a_activator && a_activator == RE::PlayerCharacter::GetSingleton()) {
+				const auto fishing = BoatFishing::Read();
+				if (BoatFishing::IsBoatReel(a_target, fishing)) {
+					if (BoatFishing::CanReel(fishing)) return act(a_this, a_target, a_activator, a_arg3, a_object, a_count);
+					// CC normally restarts from its oversized invisible ReelLineRef
+					// while idle. Route it through our look-down and idle checks.
+					if (TestHull::Get().CanStartBoatFishing()) TestHull::Get().OnPick(TestHull::kPickSupplies);
+					return true;
+				}
+			}
 			if (a_activator && a_activator == RE::PlayerCharacter::GetSingleton()) Gear::OnUsed(a_target);  // v1.7.22
 			// v1.7.30: E straight on the supplies (the crosshair on them, not on their prompt) started the fishing with no
 			// marker: turned to the floor, no cast, stuck. It goes our way (marker, open water check) or nowhere.
@@ -5494,6 +5894,11 @@ namespace
 		static MenuSink* Get() { static MenuSink s; return &s; }
 		RE::BSEventNotifyControl ProcessEvent(const RE::MenuOpenCloseEvent* a_e, RE::BSTEventSource<RE::MenuOpenCloseEvent>*) override
 		{
+			if (a_e && a_e->opening &&
+				(a_e->menuName == RE::StatsMenu::MENU_NAME || a_e->menuName == RE::LevelUpMenu::MENU_NAME)) {
+				const auto fishing = BoatFishing::Read();
+				if (fishing.ours && fishing.state > 0) BoatFishing::quitAfterMenu = true;
+			}
 			if (a_e && a_e->opening && a_e->menuName == RE::MapMenu::MENU_NAME) {
 				SKSE::GetTaskInterface()->AddTask([]() { TestHull::Get().StandFor("the map opened"); });
 			}
@@ -5508,6 +5913,12 @@ namespace
 			Stage("game player update");
 			func(a_this, a_delta);
 			g_beat.fetch_add(1, std::memory_order_relaxed);
+			if (std::isfinite(a_delta) && a_delta > 0.0f)
+				BoatFishing::startHold = (std::max)(0.0f, BoatFishing::startHold - a_delta);
+			Stage("boat fishing: exit after level-up menu");
+			BoatFishing::TendMenuExit();
+			Stage("boat fishing: finish catch session");
+			BoatFishing::TendFinishedAttempt();
 			Stage("TestHull::Update");
 			TestHull::Get().Update(a_delta);
 			Stage("LakeBoats::Update");
@@ -5793,6 +6204,10 @@ namespace
 			Legacy::CheckConflict();  // v1.7.8: OarsAndSails.dll still installed?
 			PlayerUpdateHook::Install();
 			CarrierActivateHooks::Install();  // v1.7.7
+			CarrierFootstepAudioHook::Install();
+			CarrierAnimationAudioHook<false>::Install();
+			CarrierAnimationAudioHook<true>::Install();
+			logger::info("Carrier audio: v1 native footstep/idle and SoundPlay event gates installed (carrier only, depth 220)");
 			PickActivateHook::Install();      // v1.7.9
 			FirstPersonStateUpdateHook::Install();
 			ThirdPersonStateUpdateHook::Install();
@@ -5814,6 +6229,7 @@ namespace
 			break;
 		case SKSE::MessagingInterface::kSaveGame:
 			TestHull::Get().StandFor("saving the game");  // v1.7.42
+			TestHull::Get().UntameAll("saving the game");  // v1.7.52: never saved unaggressive (calmed again half a second later)
 			break;
 		case SKSE::MessagingInterface::kPostLoadGame:
 			Legacy::OnGameLoaded();  // v1.7.8: the old-boat sweep starts a few seconds in; the OarsAndSails.dll warning
@@ -5902,9 +6318,34 @@ namespace
 	}
 }
 
+// v1.7.51: two copies of RowRim at once (the test build's RowRim.dll and the release layout's OarsAndSails.dll, both
+// enabled): both ran, every hook and effect twice (the log doubled, the underwater view went black). The RowRim.dll copy
+// stands down when an OarsAndSails.dll that is RowRim (its SKSE name) is loaded too.
+static bool OtherRowRimLoaded()
+{
+	HMODULE self = nullptr;
+	GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT, reinterpret_cast<LPCSTR>(&OtherRowRimLoaded), &self);
+	char path[MAX_PATH]{};
+	GetModuleFileNameA(self, path, MAX_PATH);
+	std::string me = path;
+	me = me.substr(me.find_last_of("\\/") + 1);
+	std::transform(me.begin(), me.end(), me.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+	if (me != "rowrim.dll") return false;  // the release copy always runs
+	const HMODULE oas = GetModuleHandleA("OarsAndSails.dll");
+	if (!oas || oas == self) return false;
+	const auto* data = reinterpret_cast<const SKSE::PluginVersionData*>(GetProcAddress(oas, "SKSEPlugin_Version"));
+	if (!data) return false;
+	const char* name = reinterpret_cast<const char*>(data) + 8;  // dataVersion, pluginVersion, then pluginName[256]
+	return std::strncmp(name, "RowRim", 7) == 0;
+}
+
 SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 {
 	SKSE::Init(a_skse);
+	if (OtherRowRimLoaded()) {
+		SKSE::log::warn("RowRim.dll: OarsAndSails.dll is RowRim too (the release copy): this copy does nothing. Enable only one of them.");
+		return true;
+	}
 	SetupLog();
 	logger::info("RowRim {} loaded", kVersion);
 	if (auto* ser = SKSE::GetSerializationInterface()) {

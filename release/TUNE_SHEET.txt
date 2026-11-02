@@ -75,6 +75,11 @@ Open the console with ~ and type a command. Words after "oas" go in quotes when 
    oas "underwater on|off"  RowRim's own clear underwater look for the camera   [Underwater] Filter=1
                             how far you see under water: [Underwater] FogNear=150, FogFar=2100
    [Wake] On=1              the stern trail on the water
+   oas "num stern"         the tiller's ripples: Num8/2 aft/forward, 4/6 closer/further apart, 9/3 up/down,
+                            7/1 smaller/bigger (0 = off); [Wake] SternY/SternSpread/SternZ/SternSize
+   oas "num hull"          the hull's ripples: 7/1 smaller/bigger (0 = off), 4/6 closer to/further from the hull,
+                            8/2 fewer/more often, 9/3 up/down, Num-/Num+ fewer/more spots a side, Num0 stem on/off,
+                            Num. at rest on/off; [Wake] HullSize/HullOut/HullEvery/HullZ/HullCount/HullStem/HullRest
 
 7. Controller
    A (the button mapped to Activate)   sit / stand up, also while seated

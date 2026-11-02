@@ -141,8 +141,7 @@ namespace Legacy
 			g_items += items;
 			const std::string msg = items > 0 ? std::format("RowRim: an old Oars and Sails boat was cleared away; {} item(s) from its chest are in your inventory", items)
 			                                  : std::string("RowRim: an old Oars and Sails boat was cleared away");
-			RE::SendHUDMessage::ShowHUDMessage(msg.c_str());
-			logger::info("{} ({} piece(s))", msg, removed);
+			logger::info("{} ({} piece(s))", msg, removed);  // v1.7.54: the log only, no HUD text
 		}
 	}
 }

@@ -913,7 +913,11 @@ namespace LakeBoats
 			b.paint = RandomPaint();
 			b.seed = Rand(0.0f, 97.0f);
 			const int people = Rand(0.0f, 1.0f) < 0.5f ? 2 : 1;
-			for (int k = 0; k < people; ++k) b.people.push_back(PickCrewBase());
+			for (int k = 0; k < people; ++k) {  // v1.7.54: never the same person twice in one boat
+				RE::FormID id = PickCrewBase();
+				for (int t = 0; t < 12 && std::find(b.people.begin(), b.people.end(), id) != b.people.end(); ++t) id = PickCrewBase();
+				if (std::find(b.people.begin(), b.people.end(), id) == b.people.end()) b.people.push_back(id);
+			}
 			if (b.mode == Mode::kRow) PickTarget(b, a_lake, false);
 			logger::info("Lake: new boat on '{}' at ({:.0f},{:.0f}), paint {}, nearest boat or player {:.0f} away", a_lake.name, at->x, at->y,
 				Paint::kNames[b.paint], std::sqrt(chosen.score));
@@ -1076,8 +1080,13 @@ namespace LakeBoats
 			std::string names;
 			for (std::size_t k = 0; k < a_b.people.size(); ++k) {
 				auto* npc = RE::TESForm::LookupByID<RE::TESNPC>(a_b.people[k]);
-				if (!InPool(npc)) {
-					npc = RE::TESForm::LookupByID<RE::TESNPC>(PickCrewBase());
+				// v1.7.54: the same person already in this boat (older saves too): someone else
+				const bool twin = std::find(a_b.people.begin(), a_b.people.begin() + k, a_b.people[k]) != a_b.people.begin() + k;
+				if (!InPool(npc) || twin) {
+					for (int t = 0; t < 12; ++t) {
+						npc = RE::TESForm::LookupByID<RE::TESNPC>(PickCrewBase());
+						if (npc && std::find(a_b.people.begin(), a_b.people.begin() + k, npc->GetFormID()) == a_b.people.begin() + k) break;
+					}
 					if (npc) a_b.people[k] = npc->GetFormID();
 				}
 				auto placed = npc ? a_hull->PlaceObjectAtMe(npc, false) : nullptr;
@@ -2055,4 +2064,122 @@ namespace LakeBoats
 		}
 		return {};
 	}
+
+	// ---- v1.7.54: the player's boat bumping a lake boat ----
+	// Each hull a capsule (its middle line from 250 astern to 250 ahead, radius 82): overlapping hulls are pushed apart,
+	// half each, and a boat closing on the other recoils (a small bounce back, the other slowed). The crew speak only on
+	// a bump at least 3 s after the last one counted (one knock can touch a dozen frames): the 1st a vanilla "Ow!" /
+	// "What was that for?" (the Hit topic, v1.7.55), the 2nd
+	// nothing but they row away fast, the 3rd and later (each at most every 20 s) a vanilla "watch it" line (the
+	// ActorCollidewithActor topic): it is your fault now. 90 s without a bump and they forget.
+	namespace Bump
+	{
+		struct Memory { int count = 0; float last = -100.0f, spoke = -100.0f; };
+		inline std::unordered_map<const void*, Memory> g_mem;
+		inline float g_clock = 0.0f;
+		inline RE::TESTopic* g_topic = nullptr;
+		inline RE::TESTopic* g_hitTopic = nullptr;  // v1.7.55: "Ow!", "What was that for?" (the vanilla Hit lines)
+		inline bool g_topicLooked = false;
+		inline void LookTopics()
+		{
+			if (g_topicLooked) return;
+			g_topicLooked = true;
+			if (auto* dh = RE::TESDataHandler::GetSingleton()) {
+				for (auto* t : dh->GetFormArray<RE::TESTopic>()) {
+					if (!t) continue;
+					const auto st = t->data.subtype.get();
+					if (!g_topic && st == RE::DIALOGUE_DATA::Subtype::kActorCollidewithActor) g_topic = t;
+					if (!g_hitTopic && st == RE::DIALOGUE_DATA::Subtype::kHit) g_hitTopic = t;
+				}
+			}
+			logger::info("Bump: 'watch it' topic {}, 'ow' topic {}", g_topic ? std::format("{:08X}", g_topic->GetFormID()) : std::string("not found"),
+				g_hitTopic ? std::format("{:08X}", g_hitTopic->GetFormID()) : std::string("not found"));
+		}
+		inline RE::TESTopic* CollideTopic() { LookTopics(); return g_topic; }
+		inline RE::TESTopic* HitTopic() { LookTopics(); return g_hitTopic ? g_hitTopic : g_topic; }
+		inline void Say(RE::Actor* a_actor, RE::TESTopic* a_topic)
+		{
+			auto* vm = RE::BSScript::Internal::VirtualMachine::GetSingleton();
+			auto* policy = vm ? vm->GetObjectHandlePolicy() : nullptr;
+			if (!a_actor || !a_topic || !policy) return;
+			const auto h = policy->GetHandleForObject(a_actor->GetFormType(), a_actor);
+			if (!h) return;
+			RE::BSTSmartPointer<RE::BSScript::IStackCallbackFunctor> cb;
+			auto* args = RE::MakeFunctionArguments(static_cast<RE::TESTopic*>(a_topic), static_cast<RE::Actor*>(nullptr), false);
+			vm->DispatchMethodCall(h, "ObjectReference", "Say", args, cb);
+		}
+		inline void SegClosest(float ax, float ay, float bx, float by, float cx, float cy, float dx, float dy, float& px, float& py, float& qx, float& qy)
+		{
+			// closest points between segments AB and CD (2D)
+			const float d1x = bx - ax, d1y = by - ay, d2x = dx - cx, d2y = dy - cy, rx = ax - cx, ry = ay - cy;
+			const float a = d1x * d1x + d1y * d1y, e = d2x * d2x + d2y * d2y, f = d2x * rx + d2y * ry;
+			float sp = 0.0f, tp = 0.0f;
+			const float c = d1x * rx + d1y * ry, b = d1x * d2x + d1y * d2y, den = a * e - b * b;
+			sp = den > 1e-6f ? std::clamp((b * f - c * e) / den, 0.0f, 1.0f) : 0.0f;
+			tp = (b * sp + f) / e;
+			if (tp < 0.0f) { tp = 0.0f; sp = std::clamp(-c / a, 0.0f, 1.0f); }
+			else if (tp > 1.0f) { tp = 1.0f; sp = std::clamp((b - c) / a, 0.0f, 1.0f); }
+			px = ax + d1x * sp; py = ay + d1y * sp; qx = cx + d2x * tp; qy = cy + d2y * tp;
+		}
+	}
+	// a_pos / a_hd / a_speed: the player's boat (middle, heading, signed speed); changed in place. Returns a bump strength
+	// (0 none) for the caller's dip.
+	inline float BumpPlayerBoat(RE::NiPoint3& a_pos, float a_hd, float& a_speed, float a_dt)
+	{
+		using namespace Bump;
+		g_clock += a_dt;
+		constexpr float kHalf = 250.0f, kR = 82.0f;
+		const float fx = std::sin(a_hd), fy = std::cos(a_hd);
+		float hit = 0.0f;
+		for (auto& lake : g_lakes) {
+			for (auto& b : lake.boats) {
+				if (!b.Live()) continue;
+				const float ddx = b.x - a_pos.x, ddy = b.y - a_pos.y;
+				if (ddx * ddx + ddy * ddy > 900.0f * 900.0f) continue;
+				const float gx = std::sin(b.yaw), gy = std::cos(b.yaw);
+				float px, py, qx, qy;
+				SegClosest(a_pos.x - fx * kHalf, a_pos.y - fy * kHalf, a_pos.x + fx * kHalf, a_pos.y + fy * kHalf,
+					b.x - gx * kHalf, b.y - gy * kHalf, b.x + gx * kHalf, b.y + gy * kHalf, px, py, qx, qy);
+				float nx = px - qx, ny = py - qy;
+				const float dist = std::sqrt(nx * nx + ny * ny);
+				if (dist >= 2.0f * kR) continue;
+				if (dist > 0.01f) { nx /= dist; ny /= dist; } else { nx = -gy; ny = gx; }
+				const float depth = 2.0f * kR - dist;
+				a_pos.x += nx * depth * 0.5f; a_pos.y += ny * depth * 0.5f;   // apart, half each
+				b.x -= nx * depth * 0.5f; b.y -= ny * depth * 0.5f;
+				// closing speed along the normal: a small bounce, never a launch
+				const float vp = (fx * nx + fy * ny) * a_speed, vb = (gx * nx + gy * ny) * b.speed;
+				const float closing = vb - vp;
+				if (closing > 5.0f) {
+					a_speed = a_speed * 0.35f - std::copysign((std::min)(closing * 0.25f, 40.0f), fx * nx + fy * ny < 0.0f ? 1.0f : -1.0f);
+					b.speed *= 0.3f;
+					hit = (std::max)(hit, std::clamp(closing / 150.0f, 0.15f, 1.0f));
+				}
+				// the crew's reaction, counted at most every 3 s
+				auto& m = g_mem[&b];
+				if (g_clock - m.last > 90.0f) m.count = 0;
+				if (g_clock - m.last < 3.0f) { m.last = g_clock; continue; }
+				m.last = g_clock;
+				++m.count;
+				RE::Actor* speaker = nullptr;
+				for (auto& c : b.crew) if (auto a = c.actor.get(); a && !a->IsDead()) { speaker = a.get(); if (!c.rower) break; }
+				logger::info("Bump: the player's boat and a lake boat, bump {} (closing {:.0f})", m.count, closing);
+				if (!speaker) continue;
+				if (m.count == 1) {
+					Say(speaker, HitTopic());  // v1.7.55: voiced, no HUD text ("Ow!", "What was that for?")
+				} else if (m.count == 2) {
+					b.mode = Mode::kFlee;
+					PickTarget(b, lake, true);
+					b.speed = (std::max)(b.speed, kFleeSpeed * 0.6f);
+				} else if (g_clock - m.spoke > 20.0f) {
+					m.spoke = g_clock;
+					Say(speaker, CollideTopic());
+					b.mode = Mode::kFlee;
+					PickTarget(b, lake, true);
+				}
+			}
+		}
+		return hit;
+	}
+
 }

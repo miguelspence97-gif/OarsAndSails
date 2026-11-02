@@ -16,3 +16,7 @@ Data/textures/RowRim/boat_bench_d.dds
 Data/textures/RowRim/fishbone_d.dds
 # the hull is built on the vanilla rowboat mesh: shipped in the Nexus zip, not in the repo
 Data/meshes/RowRim/RowRim_Hull.nif
+# v1.7.55: the v1.7.48 sleeping bag (replaced by the camp bed), and backups
+Data/textures/RowRim/boat_sleepingbag_d.dds
+Data/textures/RowRim/boat_sleepingbag_n.dds
+*.bak

@@ -54,3 +54,4 @@ Log
 License
   RowRim (RowRim.dll and its source) Copyright (C) 2026 Miguel32. GNU General Public License v3.0 or later: LICENSE.txt.
   Built with CommonLibSSE-NG (GPL-3.0-or-later with Modding and Linking Exceptions).
+
