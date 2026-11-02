@@ -10,7 +10,7 @@ rem v1.7.55: also the v1.7.48 sleeping bag's textures (the bed is the camp bed n
 rem release\oas_overlay.zip holds those OAS-named files. Build first (build.bat).
 setlocal
 cd /d "%~dp0"
-set "VER=v1.7.56"
+set "VER=v1.7.57"
 rem v1.7.20: the zip is named just "Oars and Sails" so MO2 offers it as the existing Oars and Sails mod (Replace);
 rem the version goes in Nexus's version field, not the file name
 set "ZIP=dist\Oars and Sails.zip"
