@@ -507,7 +507,18 @@ namespace Gear
 			const bool want = it.on && a_hull && !(i == kBedroll && a_seated);
 			if (!want) {
 				if (it.ref) {
-					if (i == kBedroll && a_hull) Park(i, !it.on ? "off" : "stowed for the ride");  // v1.7.47: kept, disabled
+					if (i == kBedroll && a_hull) {
+						Park(i, !it.on ? "off" : "stowed for the ride");  // v1.7.47: kept, disabled
+						// v1.7.56: the put-away bed rides along with the boat (left where it was parked, laid out after rowing it
+						// was far off in another cell: its 3D and its [E] took a moment to come back)
+						if (auto pr = it.ref.get(); pr && it.parked && !pr->IsDeleted()) {
+							const RE::NiPoint3 ps = a_at + a_rot * RE::NiPoint3{ it.x, it.y, it.z };
+							if ((pr->GetPosition() - ps).Length() > 40.0f) {
+								pr->SetPosition(ps);
+								pr->SetAngle(RE::NiPoint3{ 0.0f, 0.0f, a_yaw + it.yaw * 0.0174533f });
+							}
+						}
+					}
 					else Remove(i, !a_hull ? "no boat" : !it.on ? "off" : "stowed for the ride");
 				}
 				continue;
@@ -516,6 +527,9 @@ namespace Gear
 			if (r && it.parked) {  // v1.7.47: laid out again: the same bed enabled, set on its spot, fading in
 				if (r->IsDeleted()) { Remove(i, "gone while put away"); r = nullptr; }
 				else {
+					// v1.7.56: set on its spot before it is enabled (its 3D comes in there, the [E] with it)
+					r->SetPosition(a_at + a_rot * RE::NiPoint3{ it.x, it.y, it.z });
+					r->SetAngle(RE::NiPoint3{ 0.0f, 0.0f, a_yaw + it.yaw * 0.0174533f });
 					r->Enable(false);
 					it.parked = false;
 					it.placedAt = Now();
