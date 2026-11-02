@@ -109,6 +109,7 @@ namespace Fx
 		bool sub = false;
 		bool trail = false;
 		RE::NiPoint3 last{};
+		RE::NiPoint3 prev{};  // v1.7.58: last frame's blade tip (the swoosh)
 		float t = 0.0f;
 		float cooldown = 0.0f;
 	};
@@ -136,10 +137,13 @@ namespace Fx
 		if (!a_b.trail) {
 			a_b.trail = true;
 			a_b.last = tip;
+			a_b.prev = tip;
 			a_b.t = 0.0f;
 			return;
 		}
 		a_b.t += a_dt;
+		if (a_glow >= 0) Plankton::Swoosh(a_b.prev, tip, a_waterZ, a_glow >= 10);  // v1.7.58: the swoosh, every frame
+		a_b.prev = tip;
 		const float dx = tip.x - a_b.last.x, dy = tip.y - a_b.last.y, d2 = dx * dx + dy * dy;
 		const float sp = (std::max)(8.0f, g_ripple.space);
 		if (d2 > 600.0f * 600.0f) {  // a cell hop or a new model: start over

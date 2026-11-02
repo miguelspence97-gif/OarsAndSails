@@ -495,6 +495,32 @@ namespace Plankton
 		}
 	}
 
+	// v1.7.58: the blade's swoosh: a solid streak of glow along the blade's sweep through the water (every frame it is in,
+	// from where it was to where it is), bright sparkles at the surface over a soft glow just under, fading in about 2 s
+	inline void Swoosh(const RE::NiPoint3& a_from, const RE::NiPoint3& a_to, float a_waterZ, bool a_lake = false)
+	{
+		if (!Active() || !g.root) return;
+		RE::NiPoint3 d = a_to - a_from;
+		d.z = 0.0f;
+		const float len = d.Length();
+		if (len < 0.5f || len > 200.0f) return;  // still, or a cell hop
+		const int n = (std::min)(40, static_cast<int>(len / (a_lake ? 6.0f : 2.5f)) + 1);
+		RE::NiPoint3 back = a_lake ? RE::NiPoint3{} : g.boatVel * -1.0f;
+		const float bl = back.Length();
+		back = bl > 5.0f ? back / bl : RE::NiPoint3{};
+		for (int i = 0; i < n; ++i) {
+			RE::NiPoint3 at = a_from + d * ((static_cast<float>(i) + Rand(0.0f, 1.0f)) / static_cast<float>(n));
+			at += RE::NiPoint3{ Rand(-1.5f, 1.5f), Rand(-1.5f, 1.5f), 0.0f };
+			at.z = a_waterZ;
+			if (i % 4 == 3)  // the soft glow under the streak
+				Spawn(at, a_waterZ, Rand(0.0f, 2.0f), Rand(1.0f, 3.0f), Rand(-0.5f, 0.5f), Rand(3.0f, 8.0f), Rand(0.5f, 1.5f), 20.0f,
+					back * Rand(5.0f, 15.0f), Rand(1.2f, 2.0f), Rand(3.5f, 5.0f), true, Rand(0.5f, 0.8f), Rand(0.2f, 0.8f));
+			else
+				Spawn(at, a_waterZ, Rand(0.0f, 1.5f), Rand(0.5f, 2.0f), Rand(-0.8f, 0.8f), Rand(0.0f, 2.5f), Rand(0.2f, 0.8f), 10.0f,
+					back * Rand(5.0f, 20.0f), Rand(1.4f, 2.6f), Rand(1.6f, 2.6f), false, 1.0f, Rand(0.2f, 1.0f));
+		}
+	}
+
 	// v1.7.8: the current. Plankton in moving water rides with it: rivers and rapids carry it downstream at the water's own
 	// speed. Two sources: placed water whose water type has a current (its linear velocity, turned with the water's own
 	// placement), and named rapids / waterfall meshes (OAS 41C flow sources: downstream = the steepest drop round them).
