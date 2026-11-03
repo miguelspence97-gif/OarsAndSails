@@ -9,10 +9,15 @@ if not exist "%VSWHERE%" (
   goto :fail
 )
 for /f "usebackq tokens=*" %%i in (`"%VSWHERE%" -version [17.0^,18.0^) -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSDIR=%%i"
+rem v1.7.66: a VS update can leave the instance marked incomplete (vswhere skips it) or bring a newer VS: look wider
+if not defined VSDIR for /f "usebackq tokens=*" %%i in (`"%VSWHERE%" -all -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSDIR=%%i"
+if not defined VSDIR for %%d in (Community Professional Enterprise BuildTools) do if exist "%ProgramFiles%\Microsoft Visual Studio\2022\%%d\VC\Auxiliary\Build\vcvars64.bat" set "VSDIR=%ProgramFiles%\Microsoft Visual Studio\2022\%%d"
 if not defined VSDIR (
-  echo Visual Studio 2022 with the C++ x64 tools was not found.
+  echo Visual Studio with the C++ x64 tools was not found.
+  echo Open the Visual Studio Installer: if it shows an update pending or "Modify", finish it, then build again.
   goto :fail
 )
+echo Using Visual Studio at %VSDIR%
 
 call "%VSDIR%\VC\Auxiliary\Build\vcvars64.bat" >nul
 if errorlevel 1 goto :fail

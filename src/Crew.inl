@@ -256,7 +256,7 @@ namespace Crew
 		g.rowerId = pick->id;
 		auto a = pick->actor.get();
 		logger::info("Crew: {} {:08X} takes the oars (you at the stern)", a ? a->GetName() : "", pick->id);
-		if (a) RE::SendHUDMessage::ShowHUDMessage(std::format("{} takes the oars", a->GetName()).c_str());
+		if (a) logger::info("Crew: {} takes the oars", a->GetName());  // v1.7.68: no HUD text (you see them row)
 	}
 	inline void ResitRower()
 	{

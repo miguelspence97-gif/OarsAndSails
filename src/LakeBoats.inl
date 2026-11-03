@@ -2218,4 +2218,78 @@ namespace LakeBoats
 		return hit;
 	}
 
+	// v1.7.69: stray lamps (lights and lanterns left glowing over lakes: refs whose boat or handle was lost, a save, a cell
+	// unload, a hidden lake boat). Every 5 s round the player: a game-made (FF) ref of our lamp light or lantern base, over
+	// the water, that no boat holds (no lake boat, not the player's boat light a_keep) is removed. The player's boat and
+	// the lake boats both get theirs placed again when they need one.
+	inline void SweepStrayLamps(float a_dt, RE::FormID a_keep)
+	{
+		static float s_t = 3.0f;
+		if ((s_t -= a_dt) > 0.0f) return;
+		s_t = 5.0f;
+		auto* player = RE::PlayerCharacter::GetSingleton();
+		auto* tes = RE::TES::GetSingleton();
+		if (!player || !tes) return;
+		auto* lightBase = RE::TESForm::LookupByID<RE::TESBoundObject>(kLampLight);
+		auto* lampBase = RE::TESForm::LookupByID<RE::TESBoundObject>(kLampStatic);
+		std::unordered_set<RE::FormID> held;
+		if (a_keep) held.insert(a_keep);
+		for (auto& lake : g_lakes)
+			for (auto& b : lake.boats)
+				for (auto* h : { &b.lantern, &b.light })
+					if (auto r = h->get()) held.insert(r->GetFormID());
+		int n = 0;
+		tes->ForEachReferenceInRange(player, 12000.0f, [&](RE::TESObjectREFR* a_ref) {
+			if (!a_ref || (a_ref->GetFormID() >> 24) != 0xFF || a_ref->IsDeleted() || a_ref->IsDisabled()) return RE::BSContainer::ForEachResult::kContinue;
+			auto* base = a_ref->GetBaseObject();
+			if (!base || (base != lightBase && base != lampBase) || held.contains(a_ref->GetFormID())) return RE::BSContainer::ForEachResult::kContinue;
+			const RE::NiPoint3 p = a_ref->GetPosition();
+			bool overWater = false;
+			if (auto* c = a_ref->GetParentCell(); c && c->IsExteriorCell()) {
+				float w = 0.0f;
+				overWater = c->GetWaterHeight(p, w) && std::isfinite(w) && std::abs(w) < 1000000.0f && std::abs(p.z - w) < 400.0f;
+			}
+			if (!overWater) return RE::BSContainer::ForEachResult::kContinue;  // not ours (a lamp some mod placed on land)
+			a_ref->Disable();
+			a_ref->SetDelete(true);
+			++n;
+			logger::info("Lake: stray {} {:08X} over the water removed", base == lightBase ? "lamp light" : "lantern", a_ref->GetFormID());
+			return RE::BSContainer::ForEachResult::kContinue;
+		});
+		if (n) logger::info("Lake: {} stray lamp part(s) swept", n);
+
+		// v1.7.70: stray lake boat crew (Fishermen / Fisherwomen left standing in the water: from a save whose list missed
+		// them, or a boat that went while they stayed). A game-made (FF) actor named Fisherman / Fisherwoman (the name we
+		// give our crew) that is in no lake boat's crew, not a follower, and in the water is removed.
+		std::unordered_set<RE::FormID> crew;
+		for (auto& lake : g_lakes)
+			for (auto& b : lake.boats)
+				for (auto& c : b.crew)
+					if (auto a = c.actor.get()) crew.insert(a->GetFormID());
+		int m = 0;
+		if (auto* pl = RE::ProcessLists::GetSingleton()) {
+			std::vector<RE::Actor*> gone;
+			for (auto& h : pl->highActorHandles) {
+				auto a = h.get();
+				if (!a || a.get() == player || (a->GetFormID() >> 24) != 0xFF || a->IsDisabled() || a->IsPlayerTeammate() || crew.contains(a->GetFormID())) continue;
+				const char* nm = a->GetDisplayFullName();
+				if (!nm || (std::string_view(nm) != "Fisherman" && std::string_view(nm) != "Fisherwoman")) continue;
+				const RE::NiPoint3 p = a->GetPosition();
+				bool wet = false;
+				if (auto* st = a->AsActorState(); st && st->IsSwimming()) wet = true;
+				if (auto* c = a->GetParentCell(); !wet && c && c->IsExteriorCell()) {
+					float w = 0.0f;
+					wet = c->GetWaterHeight(p, w) && std::isfinite(w) && std::abs(w) < 1000000.0f && p.z < w - 10.0f;
+				}
+				if (wet) gone.push_back(a.get());
+			}
+			for (auto* a : gone) {
+				logger::info("Lake: stray crew {:08X} '{}' in the water removed", a->GetFormID(), a->GetDisplayFullName());
+				DeleteActorLater(a);
+				++m;
+			}
+		}
+		if (m) logger::info("Lake: {} stray crew swept", m);
+	}
+
 }

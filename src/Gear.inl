@@ -384,7 +384,7 @@ namespace Gear
 		it.on = true;
 		it.retry = 0.0f;  // v1.7.12: placed at once, not after the 2 s retry
 		WritePrivateProfileStringA("Clutter", "Bedroll", "1", Plankton::IniPath().c_str());
-		RE::SendHUDMessage::ShowHUDMessage("Bedroll unrolled (oas \"num gear\" to move it)");
+		// v1.7.68: no HUD text (the bed fades in)
 		logger::info("Gear: bedroll unrolled");
 	}
 	inline std::string BedrollCommand(const std::string& a_arg)
@@ -405,17 +405,19 @@ namespace Gear
 	// Swept every 3 s for the first 30 s after a load, as the cells round you come in.
 	inline void SweepStrays(RE::TESObjectREFR* a_hull, float a_dt)
 	{
-		if (g_sweepLeft <= 0.0f) return;
-		g_sweepLeft -= a_dt;
+		// v1.7.67: kept up for good, every 5 s after the first 30 s (a stray Fishing Supplies stayed hovering in the tub at
+		// the boat spots: left from a re-place, never swept once the 30 s were over)
+		const bool early = g_sweepLeft > 0.0f;
+		if (early) g_sweepLeft -= a_dt;
 		if ((g_sweepTimer -= a_dt) > 0.0f) return;
-		g_sweepTimer = 3.0f;
+		g_sweepTimer = early ? 3.0f : 5.0f;
 		auto* player = RE::PlayerCharacter::GetSingleton();
 		auto* tes = RE::TES::GetSingleton();
 		if (!player || !tes) return;
 		RE::TESBoundObject* bases[kItems] = { Base(kSupplies), Base(kBedroll) };
 		const RE::NiPoint3 hullAt = a_hull ? a_hull->GetPosition() : RE::NiPoint3{};
 		int n = 0;
-		tes->ForEachReferenceInRange(player, 12000.0f, [&](RE::TESObjectREFR* a_ref) {
+		tes->ForEachReferenceInRange(player, early ? 12000.0f : 4000.0f, [&](RE::TESObjectREFR* a_ref) {
 			if (!a_ref || (a_ref->GetFormID() >> 24) != 0xFF || a_ref->IsDeleted() || a_ref->IsDisabled()) return RE::BSContainer::ForEachResult::kContinue;
 			auto* base = a_ref->GetBaseObject();
 			if (base && base == g_markerBase) {  // v1.7.24: a fishing marker of ours from before
@@ -496,7 +498,7 @@ namespace Gear
 				bed.on = false;
 				WritePrivateProfileStringA("Clutter", "Bedroll", "0", Plankton::IniPath().c_str());
 				Park(kBedroll, "rolled up for the ride");
-				RE::SendHUDMessage::ShowHUDMessage("Bedroll rolled up for the ride");
+				logger::info("Gear: bedroll rolled up for the ride");  // v1.7.68: no HUD text
 			}
 			bed.retry = 0.0f;
 		}

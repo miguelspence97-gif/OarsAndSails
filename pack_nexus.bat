@@ -12,7 +12,7 @@ rem the real mod and hid it from Pandora); readme and license named "OarsAndSail
 rem release\oas_overlay.zip holds those OAS-named files. Build first (build.bat).
 setlocal
 cd /d "%~dp0"
-set "VER=v1.7.66"
+set "VER=v1.7.72"
 rem v1.7.20: the zip is named just "Oars and Sails" so MO2 offers it as the existing Oars and Sails mod (Replace);
 rem the version goes in Nexus's version field, not the file name
 set "ZIP=dist\Oars and Sails.zip"
