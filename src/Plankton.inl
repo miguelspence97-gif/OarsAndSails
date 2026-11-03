@@ -34,7 +34,10 @@ namespace Plankton
 	constexpr int kShoreSoft = 220;
 	constexpr int kAmbLo = kSharp + kSoft;                 // first open-water slot
 	constexpr int kShoreLo = kAmbLo + kAmbSharp + kAmbSoft;  // first shoreline slot
-	constexpr int kFree = kShoreLo + kShoreSharp + kShoreSoft;  // [sharp | soft | open sharp | open soft | shore sharp | shore soft]
+	constexpr int kSwooshSharp = 360;  // v1.7.59: the oar swooshes' own (the shared sparkles were always full: the streak was taken
+	constexpr int kSwooshSoft = 140;   // over by the wake and the digs the moment it was made)
+	constexpr int kSwooshLo = kShoreLo + kShoreSharp + kShoreSoft;  // first swoosh slot
+	constexpr int kFree = kSwooshLo + kSwooshSharp + kSwooshSoft;  // [sharp | soft | open sharp | open soft | shore sharp | shore soft | swoosh sharp | swoosh soft]
 	constexpr float kShoreStep = 128.0f;  // v1.5.9: the shoreline scan's grid spacing
 	constexpr int kShoreN = 44;           // grid cells across (44 x 128: 2800 out each way)
 	constexpr float kAmbRadius = 7000.0f;  // v1.5.3: how far out the open-water glows are kept (v1.5.12: 7000, was 3600)
@@ -250,9 +253,9 @@ namespace Plankton
 			int made = 0;
 			for (int i = 0; i < kFree; ++i) {
 				auto& p = g.free[i];
-				p.amb = i >= kAmbLo;
-				p.shore = i >= kShoreLo;
-				p.soft = p.shore ? i >= kShoreLo + kShoreSharp : p.amb ? i >= kAmbLo + kAmbSharp : i >= kSharp;
+				p.amb = i >= kAmbLo && i < kSwooshLo;
+				p.shore = i >= kShoreLo && i < kSwooshLo;
+				p.soft = i >= kSwooshLo ? i >= kSwooshLo + kSwooshSharp : p.shore ? i >= kShoreLo + kShoreSharp : p.amb ? i >= kAmbLo + kAmbSharp : i >= kSharp;
 				auto* n = MakeOne(p.soft);
 				if (!n) break;
 				p.node = RE::NiPointer<RE::NiNode>(n);
@@ -333,9 +336,10 @@ namespace Plankton
 	inline Glow& Take(bool a_soft, int a_kind = 0)
 	{
 		// a free slot of that kind, else the one of that kind closest to its end
-		const int lo = a_kind == 2 ? (a_soft ? kShoreLo + kShoreSharp : kShoreLo) : a_kind == 1 ? (a_soft ? kAmbLo + kAmbSharp : kAmbLo) : (a_soft ? kSharp : 0);
-		const int n = a_kind == 2 ? (a_soft ? kShoreSoft : kShoreSharp) : a_kind == 1 ? (a_soft ? kAmbSoft : kAmbSharp) : (a_soft ? kSoft : kSharp);
-		int& next = a_kind == 2 ? g.nextShore[a_soft ? 1 : 0] : a_kind == 1 ? g.nextAmb[a_soft ? 1 : 0] : (a_soft ? g.nextSoft : g.next);
+		const int lo = a_kind == 3 ? (a_soft ? kSwooshLo + kSwooshSharp : kSwooshLo) : a_kind == 2 ? (a_soft ? kShoreLo + kShoreSharp : kShoreLo) : a_kind == 1 ? (a_soft ? kAmbLo + kAmbSharp : kAmbLo) : (a_soft ? kSharp : 0);
+		const int n = a_kind == 3 ? (a_soft ? kSwooshSoft : kSwooshSharp) : a_kind == 2 ? (a_soft ? kShoreSoft : kShoreSharp) : a_kind == 1 ? (a_soft ? kAmbSoft : kAmbSharp) : (a_soft ? kSoft : kSharp);
+		static int nextSwoosh[2]{};
+		int& next = a_kind == 3 ? nextSwoosh[a_soft ? 1 : 0] : a_kind == 2 ? g.nextShore[a_soft ? 1 : 0] : a_kind == 1 ? g.nextAmb[a_soft ? 1 : 0] : (a_soft ? g.nextSoft : g.next);
 		for (int k = 0; k < n; ++k) {
 			auto& p = g.free[lo + (next + k) % n];
 			if (!p.live && p.node) { next = (next + k + 1) % n; return p; }
@@ -362,10 +366,19 @@ namespace Plankton
 		return 0.0f;
 	}
 
-	inline Glow* Spawn(const RE::NiPoint3& a_at, float a_waterZ, float a_r0, float a_grow, float a_spin, float a_depth0, float a_sink, float a_max,
-		const RE::NiPoint3& a_drift, float a_life, float a_size, bool a_soft = false, float a_pace = 1.0f, float a_churn = 0.0f, bool a_amb = false, bool a_shore = false)
+	// v1.7.64: no plankton in moving water (streams, rivers, rapids, falls): only lakes and the sea (defined in Flow below)
+	namespace Flow
 	{
-		auto& p = Take(a_soft, a_shore ? 2 : a_amb ? 1 : 0);
+		inline bool Any();
+		inline bool Moving(const RE::NiPoint3& a_p, float a_waterZ);
+	}
+	inline bool StillWater(const RE::NiPoint3& a_p, float a_waterZ) { return !Flow::Any() || !Flow::Moving(a_p, a_waterZ); }
+
+	inline Glow* Spawn(const RE::NiPoint3& a_at, float a_waterZ, float a_r0, float a_grow, float a_spin, float a_depth0, float a_sink, float a_max,
+		const RE::NiPoint3& a_drift, float a_life, float a_size, bool a_soft = false, float a_pace = 1.0f, float a_churn = 0.0f, bool a_amb = false, bool a_shore = false, bool a_swoosh = false)
+	{
+		if (!StillWater(a_at, a_waterZ)) return nullptr;  // v1.7.64
+		auto& p = Take(a_soft, a_swoosh ? 3 : a_shore ? 2 : a_amb ? 1 : 0);
 		if (!p.node) return nullptr;
 		p.live = true;
 		p.age = 0.0f;
@@ -446,6 +459,7 @@ namespace Plankton
 	{
 		LoadSettings();
 		if (!Active() || !EnsureRoot()) return;
+		if (!StillWater(a_at, a_waterZ)) return;  // v1.7.64: no glow (nor the blade's and hull's lit up) in moving water
 		// v1.5.11: about twice as many, finer, and the swirl lingers behind the boat (slow to sink, long lived); a lake boat's half
 		const int n = static_cast<int>(std::round(60.0f * g_set.density * (0.6f + 0.4f * g.night) * (a_lake ? 0.5f : 1.0f)));
 		const float dir = a_side == 0 ? 1.0f : -1.0f;  // the two oars swirl opposite ways
@@ -499,7 +513,7 @@ namespace Plankton
 	// from where it was to where it is), bright sparkles at the surface over a soft glow just under, fading in about 2 s
 	inline void Swoosh(const RE::NiPoint3& a_from, const RE::NiPoint3& a_to, float a_waterZ, bool a_lake = false)
 	{
-		if (!Active() || !g.root) return;
+		if (!Active() || !EnsureRoot()) return;
 		RE::NiPoint3 d = a_to - a_from;
 		d.z = 0.0f;
 		const float len = d.Length();
@@ -514,10 +528,10 @@ namespace Plankton
 			at.z = a_waterZ;
 			if (i % 4 == 3)  // the soft glow under the streak
 				Spawn(at, a_waterZ, Rand(0.0f, 2.0f), Rand(1.0f, 3.0f), Rand(-0.5f, 0.5f), Rand(3.0f, 8.0f), Rand(0.5f, 1.5f), 20.0f,
-					back * Rand(5.0f, 15.0f), Rand(1.2f, 2.0f), Rand(3.5f, 5.0f), true, Rand(0.5f, 0.8f), Rand(0.2f, 0.8f));
+					back * Rand(5.0f, 15.0f), Rand(1.8f, 2.8f), Rand(6.0f, 9.0f), true, Rand(0.5f, 0.8f), Rand(0.2f, 0.8f), false, false, true);  // v1.7.59: own pool, bigger
 			else
 				Spawn(at, a_waterZ, Rand(0.0f, 1.5f), Rand(0.5f, 2.0f), Rand(-0.8f, 0.8f), Rand(0.0f, 2.5f), Rand(0.2f, 0.8f), 10.0f,
-					back * Rand(5.0f, 20.0f), Rand(1.4f, 2.6f), Rand(1.6f, 2.6f), false, 1.0f, Rand(0.2f, 1.0f));
+					back * Rand(5.0f, 20.0f), Rand(1.8f, 3.0f), Rand(3.0f, 4.5f), false, 1.0f, Rand(0.2f, 1.0f), false, false, true);
 		}
 	}
 
@@ -535,6 +549,7 @@ namespace Plankton
 			float r = 0.0f;           // a quick circle round it
 			RE::NiPoint3 lo{}, hi{};  // its bounds (local)
 			RE::NiPoint3 vel{};       // world units/s
+			bool stream = false;      // v1.7.64: river / stream water (by its name), current or not
 		};
 		struct Src
 		{
@@ -584,11 +599,29 @@ namespace Plankton
 			return true;
 		}
 
+		// v1.7.64: a water type or water mesh named for running water
+		inline bool StreamName(std::string a_hay)
+		{
+			std::transform(a_hay.begin(), a_hay.end(), a_hay.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+			for (const char* k : { "river", "stream", "creek", "brook", "rapid", "waterfall", "cascade", "falls" })
+				if (a_hay.find(k) != std::string::npos) return true;
+			return false;
+		}
 		inline bool AddWater(RE::TESObjectREFR* a_ref, RE::TESWaterForm* a_water)
 		{
 			const RE::NiPoint3 lin = a_water->linearVelocity;
 			const float raw = lin.Length();
-			if (raw < 0.001f) return true;  // still water
+			std::string hay;
+			if (const char* n = a_water->GetFullName()) hay += n;
+			hay += ' ';
+			if (const char* e = a_water->GetFormEditorID()) hay += e;
+			if (auto* b = a_ref->GetBaseObject()) {
+				hay += ' ';
+				if (const char* e = b->GetFormEditorID()) hay += e;
+				if (auto* m = b->As<RE::TESModel>(); m && m->GetModel()) { hay += ' '; hay += m->GetModel(); }
+			}
+			const bool stream = StreamName(hay);
+			if (raw < 0.001f && !stream) return true;  // still water
 			auto* base = a_ref->GetBaseObject();
 			auto* bound = base ? base->As<RE::TESBoundObject>() : nullptr;
 			auto* root = a_ref->Get3D();
@@ -606,6 +639,7 @@ namespace Plankton
 			v.r = (std::max)((v.hi - v.lo).Length() * 0.5f * v.scale, 200.0f) + std::hypot((v.hi.x + v.lo.x) * 0.5f, (v.hi.y + v.lo.y) * 0.5f) * v.scale;
 			// The CK's linear velocity is small (Havok metres a second): about 70 game units to the metre. A big one is
 			// taken as game units already.
+			v.stream = stream;
 			const RE::NiPoint3 local = raw < 20.0f ? lin * 70.0f : lin;
 			v.vel = rot * local;
 			v.vel.z = 0.0f;
@@ -725,6 +759,18 @@ namespace Plankton
 			return v;
 		}
 		inline bool Any() { return !g_vols.empty() || !g_srcs.empty(); }
+		// v1.7.64: running water here: inside a river / stream water, or a current over 25 u/s (rapids, falls)
+		inline bool Moving(const RE::NiPoint3& a_p, float a_waterZ)
+		{
+			for (const auto& vol : g_vols) {
+				if (!vol.stream) continue;
+				const float dx = a_p.x - vol.pos.x, dy = a_p.y - vol.pos.y;
+				if (dx * dx + dy * dy > vol.r * vol.r || std::abs(a_waterZ - vol.pos.z) > 400.0f) continue;
+				const RE::NiPoint3 l = vol.rotT * RE::NiPoint3{ dx, dy, a_waterZ - vol.pos.z } / vol.scale;
+				if (l.x >= vol.lo.x && l.x <= vol.hi.x && l.y >= vol.lo.y && l.y <= vol.hi.y) return true;
+			}
+			return At(a_p, a_waterZ).Length() > 25.0f;
+		}
 	}
 
 	struct Ctx
@@ -919,7 +965,7 @@ namespace Plankton
 				}
 			}
 			int live = 0;
-			for (int i = kShoreLo; i < kFree; ++i) if (g.free[i].live) ++live;
+			for (int i = kShoreLo; i < kSwooshLo; ++i) if (g.free[i].live) ++live;
 			const int want = static_cast<int>(static_cast<float>(g_set.shore) * (0.4f + 0.6f * g.night));
 			g.shoreAcc += dt * 3.0f;  // up to 3 new lines a second while short
 			int tries = 0;
@@ -1074,7 +1120,11 @@ namespace Plankton
 					p.boost *= std::exp(-dt / 1.4f);
 				}
 				// v1.7.8: carried by the current (rivers, rapids), the shoreline ones held back by the shallows
-				if (flowing) p.centre += Flow::At(p.centre, p.waterZ) * (dt * (p.shore ? 0.35f : 1.0f));
+				if (flowing) {
+					p.centre += Flow::At(p.centre, p.waterZ) * (dt * (p.shore ? 0.35f : 1.0f));
+					// v1.7.64: carried into running water it fades out (0.6 s)
+					if (Flow::Moving(p.centre, p.waterZ)) { p.life = (std::min)(p.life, p.age + 0.6f); p.fadeOut = (std::min)(p.fadeOut, 0.6f); }
+				}
 				const float te = p.age * p.pace;                                 // v1.5.2: its own pace (deep ones slower)
 				p.ang += p.spin * p.pace * std::exp(-0.35f * te) * dt;          // the swirl slows
 				const float r = p.r0 + p.grow * (1.0f - std::exp(-0.6f * te)) / 0.6f;

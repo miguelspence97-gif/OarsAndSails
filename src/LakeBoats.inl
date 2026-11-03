@@ -142,7 +142,7 @@ namespace Fx
 			return;
 		}
 		a_b.t += a_dt;
-		if (a_glow >= 0) Plankton::Swoosh(a_b.prev, tip, a_waterZ, a_glow >= 10);  // v1.7.58: the swoosh, every frame
+		// v1.7.65: the v1.7.58-60 swooshes (sprite streak and ribbon) are off: Plankton::Swoosh / Ribbon kept, not called
 		a_b.prev = tip;
 		const float dx = tip.x - a_b.last.x, dy = tip.y - a_b.last.y, d2 = dx * dx + dy * dy;
 		const float sp = (std::max)(8.0f, g_ripple.space);
@@ -293,6 +293,7 @@ namespace LakeBoats
 			float seed = 0.0f;     // v1.3.1: this boat's own phase for the idle rock (was taken from its position: it jumped as it moved)
 			float turnVel = 0.0f;  // v1.3.1: the turn rate, eased like the player's (was a hard clamp: jerky)
 			float lean = 0.0f;     // v1.3.1: the player's turn lean
+			float pushX = 0.0f, pushY = 0.0f;  // v1.7.61: shoved by the player's boat: drifts off, slowing (units/s)
 			struct Lamp
 			{
 				float pitch = 0.0f, roll = 0.0f, pitchVel = 0.0f, rollVel = 0.0f;
@@ -1518,6 +1519,15 @@ namespace LakeBoats
 			const WS ws = WaterState(nx, ny, a_lake.water, 40.0f);
 			if (ws != WS::kBlocked && !InAvoid(a_lake, nx, ny)) { a_b.x = nx; a_b.y = ny; }
 			else { a_b.speed = 0.0f; if (haveRower) PickTarget(a_b, a_lake, false); }
+			if (a_b.pushX != 0.0f || a_b.pushY != 0.0f) {  // v1.7.61: a bump's shove, gliding off and dying away
+				const float sx = a_b.x + a_b.pushX * a_dt, sy = a_b.y + a_b.pushY * a_dt;
+				if (WaterState(sx, sy, a_lake.water, 40.0f) != WS::kBlocked && !InAvoid(a_lake, sx, sy)) { a_b.x = sx; a_b.y = sy; }
+				else a_b.pushX = a_b.pushY = 0.0f;
+				const float k = std::exp(-0.9f * a_dt);
+				a_b.pushX *= k;
+				a_b.pushY *= k;
+				if (a_b.pushX * a_b.pushX + a_b.pushY * a_b.pushY < 4.0f) a_b.pushX = a_b.pushY = 0.0f;
+			}
 			if (!live) return;
 
 			auto hull = a_b.hull.get();
@@ -2135,6 +2145,16 @@ namespace LakeBoats
 		constexpr float kHalf = 250.0f, kR = 82.0f;
 		const float fx = std::sin(a_hd), fy = std::cos(a_hd);
 		float hit = 0.0f;
+		// v1.7.61: the player's boat's own small recoil, gliding off over a second or so
+		static float s_px = 0.0f, s_py = 0.0f;
+		if (s_px != 0.0f || s_py != 0.0f) {
+			a_pos.x += s_px * a_dt;
+			a_pos.y += s_py * a_dt;
+			const float k = std::exp(-2.0f * a_dt);
+			s_px *= k;
+			s_py *= k;
+			if (s_px * s_px + s_py * s_py < 1.0f) s_px = s_py = 0.0f;
+		}
 		for (auto& lake : g_lakes) {
 			for (auto& b : lake.boats) {
 				if (!b.Live()) continue;
@@ -2149,14 +2169,26 @@ namespace LakeBoats
 				if (dist >= 2.0f * kR) continue;
 				if (dist > 0.01f) { nx /= dist; ny /= dist; } else { nx = -gy; ny = gx; }
 				const float depth = 2.0f * kR - dist;
-				a_pos.x += nx * depth * 0.5f; a_pos.y += ny * depth * 0.5f;   // apart, half each
-				b.x -= nx * depth * 0.5f; b.y -= ny * depth * 0.5f;
-				// closing speed along the normal: a small bounce, never a launch
+				// v1.7.61: apart mostly by the lake boat (the lighter feel: it gives way, yours barely does)
+				a_pos.x += nx * depth * 0.2f; a_pos.y += ny * depth * 0.2f;
+				b.x -= nx * depth * 0.8f; b.y -= ny * depth * 0.8f;
+				// closing speed along the normal
 				const float vp = (fx * nx + fy * ny) * a_speed, vb = (gx * nx + gy * ny) * b.speed;
 				const float closing = vb - vp;
 				if (closing > 5.0f) {
-					a_speed = a_speed * 0.35f - std::copysign((std::min)(closing * 0.25f, 40.0f), fx * nx + fy * ny < 0.0f ? 1.0f : -1.0f);
-					b.speed *= 0.3f;
+					// v1.7.61: the lake boat is shoved off along the hit, as hard as the hit (it glides away, slowing), and swung
+					// about where it was struck; yours loses a little way head-on (none glancing) and recoils a touch
+					const float push = (std::min)(closing * 0.9f, 260.0f);
+					b.pushX -= nx * push;
+					b.pushY -= ny * push;
+					const float rx = qx - b.x, ry = qy - b.y;              // where it was struck, from its middle
+					const float torque = rx * -ny - ry * -nx;             // about +z of the shove -n
+					b.turnVel = std::clamp(b.turnVel - torque * push * 0.00003f, -0.7f, 0.7f);
+					b.speed *= 0.5f;
+					a_speed *= 1.0f - 0.35f * std::abs(fx * nx + fy * ny);
+					const float recoil = (std::min)(closing * 0.18f, 45.0f);
+					s_px += nx * recoil;
+					s_py += ny * recoil;
 					hit = (std::max)(hit, std::clamp(closing / 150.0f, 0.15f, 1.0f));
 				}
 				// the crew's reaction, counted at most every 3 s

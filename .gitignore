@@ -20,3 +20,7 @@ Data/meshes/RowRim/RowRim_Hull.nif
 Data/textures/RowRim/boat_sleepingbag_d.dds
 Data/textures/RowRim/boat_sleepingbag_n.dds
 *.bak
+
+# local notes and secrets (never commit)
+New folder/
+*token*

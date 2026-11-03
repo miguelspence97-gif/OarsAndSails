@@ -20,9 +20,11 @@ New in v1.7.40 (since v1.7.20)
     its gear with it, E in the boat no longer sits you down (only the Row / Steer prompts do) so you can pick things up.
 
 Install
-  Updating from Oars and Sails: install this over it (MO2: install, choose Merge or Replace; Vortex: update the mod).
-  That's all. The plugin, the esl and the rowing animation keep the Oars and Sails file names, so they replace the old
-  ones: no re-run of Nemesis / Pandora, nothing to tick or untick. Load your save:
+  Updating from Oars and Sails: install this over it (MO2: install, choose Replace; Vortex: update the mod), then run
+  Nemesis or Pandora once. The plugin, the esl and the rowing animation keep the Oars and Sails file names, so they
+  replace the old ones: nothing to tick or untick. Oars and Sails' bundled copy of Offset Movement Animation (the
+  Nemesis_Engine\mod\gpma folder and GPMA*.hkx) is no longer included: it overwrote the real mod and hid it from Pandora.
+  If you use Offset Movement Animation, install it on its own. Load your save:
     - old Oars and Sails boats near you are cleared away within a few seconds; anything in the old boat chest goes into
       your inventory (a notification says how many items)
     - your rowing speed, glide and turning from OarsAndSails.ini carry over
@@ -43,7 +45,6 @@ What's inside Data\
   OarsAndSails.esl                     the Board / Row / Steer prompts; keeps old Oars and Sails saves loading
   meshes\RowRim\                       the hull (with its floorboards and clutter), plankton and wake meshes
   meshes\actors\character\...          the row animation (Nemesis / Pandora list, the Oars and Sails name and path)
-  Nemesis_Engine\mod\gpma\, GPMA*.hkx   GP Offset Movement Animation, as Oars and Sails shipped it
   textures\RowRim\                     hull, paints, benches, floor, rope, plankton and wake textures
 
 All console commands and settings: TUNE_SHEET.txt next to this file.
@@ -52,6 +53,6 @@ Log
   Documents\My Games\Skyrim Special Edition\SKSE\RowRim.log
 
 License
-  RowRim (RowRim.dll and its source) Copyright (C) 2026 Miguel32. GNU General Public License v3.0 or later: LICENSE.txt.
+  RowRim (RowRim.dll and its source) Copyright (C) 2026 Miguel32. GNU General Public License v3.0 or later: OarsAndSails LICENSE.txt.
   Built with CommonLibSSE-NG (GPL-3.0-or-later with Modding and Linking Exceptions).
 

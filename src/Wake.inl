@@ -439,3 +439,232 @@ namespace Wake
 		g.root->Update(data);
 	}
 }
+
+// v1.7.60: the oars' glowing swoosh, a ribbon instead of dots: streak pieces (meshes\RowRim\RowRim_Swoosh.nif, one flat
+// additive quad on the water, white streak texture tinted here) laid every few units along each blade's sweep, turned
+// along it. Every piece then turns about the stroke's catch point and drifts outward, so the ribbon curls and opens
+// into a spiral, widening and fading. The catch itself throws a tight, bright spiral of them. Night only, like the
+// plankton (the player's oars; the lake boats keep the sprite swoosh). See src\Oars_v1760_Ribbon.md.
+namespace Ribbon
+{
+	constexpr const char* kModel = "RowRim\\RowRim_Swoosh.nif";
+	constexpr int kPieces = 700;
+	constexpr float kStep = 4.0f;  // a piece every this many units of the blade's sweep
+
+	struct Piece
+	{
+		RE::NiPointer<RE::NiNode> node;
+		RE::BSEffectShaderMaterial* mat = nullptr;
+		bool live = false;
+		RE::NiPoint3 c{};                                // the catch it turns about
+		float r = 0.0f, ang = 0.0f, rot = 0.0f;         // where it is about c, and its turn off that angle
+		float spin = 0.0f, out = 0.0f;                  // rad/s, units/s (both die away)
+		float age = 0.0f, life = 1.0f, size = 1.0f, grow = 1.0f, bright = 1.0f, waterZ = 0.0f;
+		RE::NiPoint3 drift{};
+	};
+	struct State
+	{
+		RE::NiPointer<RE::NiNode> src, root;
+		Piece p[kPieces];
+		int next = 0, made = 0, live = 0;
+		bool failed = false;
+		RE::NiPoint3 catchAt[2]{};
+		bool haveCatch[2]{};
+		float acc[2]{};
+		int logs = 0;
+	};
+	inline State g;
+	constexpr float kSpinDir[2] = { 1.0f, -1.0f };  // the two oars swirl opposite ways (as the plankton dig)
+
+	inline RE::NiNode* MakeOne(RE::BSEffectShaderMaterial*& a_mat)
+	{
+		a_mat = nullptr;
+		if (!Plankton::LoadModel(g.src, kModel)) { g.failed = true; return nullptr; }
+		auto* obj = g.src->Clone();
+		auto* n = obj ? obj->AsNode() : nullptr;
+		if (!n) return nullptr;
+		n->local = RE::NiTransform{};
+		n->name = "RowRim_SwooshPiece";
+		n->SetAppCulled(true);
+		for (auto& c : n->GetChildren()) {  // its own material (as the wake pieces), so it fades on its own
+			auto* geo = c ? c->AsGeometry() : nullptr;
+			if (!geo) continue;
+			auto* prop = netimmerse_cast<RE::BSEffectShaderProperty*>(geo->GetGeometryRuntimeData().shaderProperty.get());
+			auto* mat = prop ? static_cast<RE::BSEffectShaderMaterial*>(prop->material) : nullptr;
+			if (!mat) continue;
+			auto* copy = static_cast<RE::BSEffectShaderMaterial*>(mat->Create());
+			if (!copy) continue;
+			copy->CopyMembers(mat);
+			copy->baseColor.alpha = 0.999f - 0.0001f * static_cast<float>(g.made++ % 4000);
+			prop->SetMaterial(copy, true);
+			copy->~BSEffectShaderMaterial();
+			RE::free(copy);
+			a_mat = static_cast<RE::BSEffectShaderMaterial*>(prop->material);
+			break;
+		}
+		return n;
+	}
+
+	inline bool EnsureRoot()
+	{
+		if (g.failed) return false;
+		auto* cell = Plankton::CellNode();
+		if (!cell) return false;
+		if (!g.root) {
+			auto* r = RE::NiNode::Create(static_cast<std::uint16_t>(kPieces));
+			r->name = "RowRim_Swoosh";
+			g.root = RE::NiPointer<RE::NiNode>(r);
+			int made = 0;
+			for (auto& p : g.p) {
+				auto* n = MakeOne(p.mat);
+				if (!n) break;
+				p.node = RE::NiPointer<RE::NiNode>(n);
+				r->AttachChild(n, true);
+				++made;
+			}
+			logger::info("Swoosh: {} ribbon pieces made", made);
+			if (g.failed) return false;
+		}
+		if (g.root->parent != cell) {
+			if (auto* old = g.root->parent) {
+				RE::NiPointer<RE::NiAVObject> keep;
+				old->DetachChild(g.root.get(), keep);
+			}
+			cell->AttachChild(g.root.get(), true);
+		}
+		return true;
+	}
+
+	inline Piece* Take()
+	{
+		for (int k = 0; k < kPieces; ++k) {
+			auto& p = g.p[(g.next + k) % kPieces];
+			if (!p.live && p.node) { g.next = (g.next + k + 1) % kPieces; return &p; }
+		}
+		Piece* best = nullptr;
+		float most = -1.0f;
+		for (auto& p : g.p) {
+			const float f = p.age / (std::max)(0.01f, p.life);
+			if (p.node && f > most) { most = f; best = &p; }
+		}
+		return best;
+	}
+
+	// a piece at a_at, turning about a_c, its streak a_dirAng (world, radians) at first
+	inline void Spawn(int a_side, const RE::NiPoint3& a_c, const RE::NiPoint3& a_at, float a_dirAng, float a_waterZ, float a_life, float a_size, float a_grow,
+		float a_bright, float a_spinMul, float a_outMul)
+	{
+		auto* p = Take();
+		if (!p) return;
+		p->live = true;
+		p->c = a_c;
+		p->r = std::hypot(a_at.x - a_c.x, a_at.y - a_c.y);
+		p->ang = p->r > 0.01f ? std::atan2(a_at.y - a_c.y, a_at.x - a_c.x) : a_dirAng;
+		p->rot = a_dirAng - p->ang;
+		p->spin = kSpinDir[a_side] * Plankton::Rand(0.5f, 1.1f) * a_spinMul;
+		p->out = Plankton::Rand(6.0f, 14.0f) * a_outMul;
+		p->age = 0.0f;
+		p->life = a_life;
+		p->size = a_size;
+		p->grow = a_grow;
+		p->bright = a_bright;
+		p->waterZ = a_waterZ;
+		RE::NiPoint3 back = Plankton::g.boatVel * -1.0f;
+		const float bl = back.Length();
+		p->drift = bl > 5.0f ? back / bl * Plankton::Rand(4.0f, 12.0f) : RE::NiPoint3{};
+	}
+
+	// the catch (a_side 0 right, 1 left): a tight, bright spiral off the blade, and the stroke's turning point
+	inline void Catch(int a_side, const RE::NiPoint3& a_at, float a_waterZ)
+	{
+		if (a_side < 0 || a_side > 1) return;
+		g.catchAt[a_side] = a_at;
+		g.haveCatch[a_side] = Plankton::StillWater(a_at, a_waterZ);  // v1.7.64: none in streams / rivers
+		g.acc[a_side] = 0.0f;
+		if (!g.haveCatch[a_side] || !Plankton::Active() || !EnsureRoot()) return;
+		const float dir = kSpinDir[a_side];
+		const float a0 = Plankton::Rand(0.0f, 6.2832f);
+		constexpr int kArm = 28;
+		for (int k = 0; k < kArm; ++k) {
+			const float t = static_cast<float>(k) / static_cast<float>(kArm - 1);
+			const float a = a0 + dir * t * 4.2f;  // about two thirds of a turn, opening out
+			const float rr = 2.0f + 16.0f * t;
+			const RE::NiPoint3 at = a_at + RE::NiPoint3{ std::cos(a) * rr, std::sin(a) * rr, 0.0f };
+			Spawn(a_side, a_at, at, a + dir * 1.5708f, a_waterZ, Plankton::Rand(2.4f, 3.4f), 1.25f - 0.45f * t, Plankton::Rand(1.8f, 2.6f), 1.0f - 0.3f * t, 1.6f, 1.0f);
+		}
+		for (int k = 0; k < 3; ++k)  // the bright heart where the blade went in
+			Spawn(a_side, a_at, a_at, Plankton::Rand(0.0f, 6.2832f), a_waterZ, Plankton::Rand(1.4f, 2.0f), 2.2f, 1.6f, 0.9f, 2.0f, 0.3f);
+		if (g.logs++ < 6) logger::info("Swoosh: catch ({}) at ({:.0f},{:.0f}), {} pieces live", a_side == 0 ? "right" : "left", a_at.x, a_at.y, g.live);
+	}
+
+	// the blade sweeping through the water this frame: the ribbon laid along it
+	inline void Sweep(int a_side, const RE::NiPoint3& a_from, const RE::NiPoint3& a_to, float a_waterZ)
+	{
+		if (a_side < 0 || a_side > 1 || !g.haveCatch[a_side]) return;
+		if (!Plankton::Active() || !EnsureRoot()) return;
+		RE::NiPoint3 d = a_to - a_from;
+		d.z = 0.0f;
+		const float len = d.Length();
+		if (len < 0.3f || len > 200.0f) return;  // still, or a cell hop
+		const float dirAng = std::atan2(d.y, d.x);
+		float& acc = g.acc[a_side];
+		acc += len;
+		for (int n = 0; acc >= kStep && n < 24; ++n) {
+			acc -= kStep;
+			const float f = std::clamp(1.0f - acc / len, 0.0f, 1.0f);
+			const RE::NiPoint3 at = a_from + d * f;
+			Spawn(a_side, g.catchAt[a_side], at, dirAng, a_waterZ, Plankton::Rand(2.0f, 3.0f), Plankton::Rand(0.9f, 1.2f), Plankton::Rand(1.6f, 2.4f),
+				Plankton::Rand(0.55f, 0.75f), 1.0f, 1.0f);
+		}
+		if (acc > kStep) acc = 0.0f;
+	}
+
+	inline void Tick(float a_dt)
+	{
+		if (!g.root) return;
+		const float dt = std::clamp(a_dt, 0.0f, 0.1f);
+		const float night = Plankton::Active() ? Plankton::g.night : 0.0f;
+		const float spinK = std::exp(-dt * 0.6f), outK = std::exp(-dt * 0.8f);
+		int live = 0;
+		for (auto& p : g.p) {
+			if (!p.live) continue;
+			p.age += dt;
+			if (p.age >= p.life || night <= 0.0f) {
+				p.live = false;
+				if (p.node) p.node->SetAppCulled(true);
+				continue;
+			}
+			++live;
+			p.ang += p.spin * dt;
+			p.r += p.out * dt;
+			p.spin *= spinK;
+			p.out *= outK;
+			p.c += p.drift * dt;
+			const float t = p.age / p.life;
+			const float up = std::clamp(p.age / 0.08f, 0.0f, 1.0f);
+			const float a = p.bright * up * std::pow(1.0f - t, 1.5f) * night;
+			const float s = t * t * (3.0f - 2.0f * t);
+			const float th = p.ang + p.rot;
+			const RE::NiPoint3 dir{ std::cos(th), std::sin(th), 0.0f };
+			RE::NiPoint3 at = p.c + RE::NiPoint3{ std::cos(p.ang), std::sin(p.ang), 0.0f } * p.r;
+			at.z = p.waterZ + 0.6f;
+			if (!p.node) continue;
+			auto& m = p.node->local.rotate;  // local y along the streak (as Wake::Place)
+			m.entry[0][0] = dir.y;  m.entry[0][1] = dir.x; m.entry[0][2] = 0.0f;
+			m.entry[1][0] = -dir.x; m.entry[1][1] = dir.y; m.entry[1][2] = 0.0f;
+			m.entry[2][0] = 0.0f;   m.entry[2][1] = 0.0f;  m.entry[2][2] = 1.0f;
+			p.node->local.translate = at;
+			p.node->local.scale = p.size * (1.0f + (p.grow - 1.0f) * s);
+			if (p.mat) {
+				p.mat->baseColor = RE::NiColorA{ 0.30f, 0.85f, 1.0f, a };
+				p.mat->baseColorScale = 2.0f;
+			}
+			p.node->SetAppCulled(a < 0.005f);
+		}
+		g.live = live;
+		if (live && !EnsureRoot()) return;
+		RE::NiUpdateData data{};
+		data.flags.set(RE::NiUpdateData::Flag::kDirty);
+		g.root->Update(data);
+	}
+}
