@@ -23,8 +23,12 @@ namespace Crew
 		bool playerRows = true; // the player is on the middle thwart (else at the stern seat)
 		float deckZ = 31.0f;    // standing height on the floor (model z)
 		float speed = 0.0f;
+		float scale = 1.0f;     // v1.8.27: the boat drawn this much bigger (the sailing boat): the seats move out with it
+		int kind = 0;           // v1.8.51: which boat (0 rowboat, 1 sailing boat, 2 longship): its own seats
 	};
-	struct SeatDef { RE::NiPoint3 pos; float yaw; const char* name; RE::NiPoint3 standOff; };
+	// v1.8.51: ledge: the ledge sit (legs hanging over an edge) instead of the chair sit; standAt: standOff is where they
+	// stand up (a spot on the floor, model frame), not an offset from the seat
+	struct SeatDef { RE::NiPoint3 pos; float yaw; const char* name; RE::NiPoint3 standOff; bool ledge = false; bool standAt = false; };
 	constexpr float kPi = 3.14159265f;
 	// humans: z is the sitting feet (the player's seats: 35 on the stern seat, 33 on the middle thwart, thwart tops 64-66)
 	inline const SeatDef kHuman[] = {
@@ -44,6 +48,32 @@ namespace Crew
 		{ { 0.0f, 196.0f, 44.0f }, 0.0f, "bow (the dog's seat)", { 0.0f, -30.0f, 0.0f } },
 	};
 	constexpr int kDogs = 1;
+	// v1.8.51: the sailing boat's own seats (Miguel's sketch), in its model's frame (drawn 1.25 bigger). Chair sits: z is
+	// the root, under the seat at the floor (the sit puts the seat about 20.8 higher in the model). Ledge sits: the root
+	// stands about 10 over the edge and 12 back from it, the body forward and down onto the edge (as Miguel tuned the
+	// starboard one in game). v1.8.52: Miguel's tunes are the seats now; the bench is gone, its sitter on the foredeck's
+	// port edge with the chair sit and its fidgets, legs into the well; the one on the rail moved forward onto the low
+	// rail past the raised bulwark (his legs went through it). Standing up, each is put on the floorboards in the well
+	// first (never in the sea from the rail). Tuned in game: Settings / Crew, Show seat markers. v1.8.53: his later tunes
+	// of seats 0 and 3 (Spot0 / Spot3) baked in too; the front ledge (2) is the first follower's seat.
+	inline const SeatDef kSailHuman[] = {
+		{ { -53.4f, -48.4f, 46.5f }, 2.565f, "foredeck edge, port", { -34.0f, -122.0f, 0.0f }, false, true },
+		{ { -32.7f, -200.0f, 49.2f }, -0.541f, "stern seat, beside the helmsman", { -32.7f, -165.0f, 0.0f }, false, true },
+		{ { 55.0f, -49.2f, 77.3f }, -2.47f, "foredeck edge, starboard (ledge)", { 40.0f, -112.0f, 0.0f }, true, true },
+		{ { -42.3f, 182.8f, 94.2f }, -0.981f, "port rail forward, feet over the side (ledge)", { -30.0f, -112.0f, 0.0f }, true, true },
+	};
+	inline const SeatDef kSailDog[] = {
+		{ { 51.0f, 78.0f, 69.5f }, 0.0f, "foredeck, right of the mast (the dog's seat)", { 26.0f, -124.0f, 0.0f }, false, true },
+	};
+	constexpr int kSailHumans = 4;
+	inline int HumanCount(int a_kind) { return a_kind == 1 ? kSailHumans : kHumans; }
+	inline int DogCount(int) { return kDogs; }
+	inline const SeatDef& Def(int a_kind, bool a_dog, int a_slot)
+	{
+		if (a_kind == 1) return a_dog ? kSailDog[0] : kSailHuman[std::clamp(a_slot, 0, kSailHumans - 1)];
+		return a_dog ? kDog[std::clamp(a_slot, 0, kDogs - 1)] : kHuman[std::clamp(a_slot, 0, kHumans - 1)];
+	}
+	inline bool g_markers = false;  // v1.8.51: pink markers on the seats of the boat in use (Settings / Crew)
 	constexpr float kBoardRange = 3000.0f;
 	constexpr float kLateRange = 400.0f, kLateDwell = 1.0f, kLateMaxSpeed = 60.0f, kLateTime = 0.7f, kLateArc = 40.0f;
 
@@ -54,6 +84,8 @@ namespace Crew
 		RE::FormID id = 0;
 		bool dog = false;
 		int slot = 0;
+		bool ledge = false;     // v1.8.51: on a ledge seat (the ledge sit)
+		float sentAt = -100.0f; // v1.8.51: when the ledge sit was last sent
 		float sitTimer = 0.0f, idleTimer = 0.0f;
 		float idleAt = -100.0f;  // v1.6.3: when a chair idle was last sent (its own stand-up events are not a stand-up)
 		// v1.7.35: the dog lies down after sitting a while (and is no longer stood back up when it lies)
@@ -77,7 +109,7 @@ namespace Crew
 	// v1.6.3: OAS v1.0.11-1.0.13: the seated state comes from the actor's own animation events, and the sit is only sent
 	// when they are NOT seated. The v1.6.0 blind re-send every 3 s restarted the sit on a seated actor: the flicker and
 	// the jump. The sink may run off the main thread: it only sets flags, read on the main thread under the mutex.
-	struct SeatFlags { bool seated = false; bool pick = false; };
+	struct SeatFlags { bool seated = false; bool pick = false; bool stood = false; };  // v1.8.51: stood: back to standing (tailMTIdle)
 	inline std::mutex g_flagMx;
 	inline std::unordered_map<RE::FormID, SeatFlags> g_flags;
 	struct AnimSink : public RE::BSTEventSink<RE::BSAnimationGraphEvent>
@@ -95,6 +127,7 @@ namespace Crew
 			// OAS NoteCrewEvent: boarding shows IdleStop, tailMTIdle, IdleOffsetStop, idleChairSitting, tailChairIdle: the last wins
 			if (eq("tailChairIdle") || eq("idleChairSitting")) it->second.seated = true;
 			if (eq("tailMTIdle") || eq("IdleStop") || eq("IdleChairExitStart") || eq("IdleChairExitToStand") || eq("IdleBedExitToStand")) it->second.seated = false;
+			if (eq("tailMTIdle")) it->second.stood = true;
 			if (eq("PickNewIdle")) it->second.pick = true;
 			return RE::BSEventNotifyControl::kContinue;
 		}
@@ -118,8 +151,6 @@ namespace Crew
 		float lingerT = 0.0f, lingerTotal = 0.0f;
 		Pose pose{};
 		bool havePose = false;
-		Tune human[kHumans]{}, dog[kDogs]{};
-		bool tunesLoaded = false;
 		// late boarding
 		bool hop = false;
 		RE::ActorHandle hopActor;
@@ -269,45 +300,86 @@ namespace Crew
 		}
 	}
 
-	// ---- seat tunes (RowRim.ini [CrewSeats]) ----
-	inline void LoadTunes()
+	// ---- seat tunes (RowRim.ini [CrewSeats]; v1.8.26: each boat its own section; v1.8.51: cached per boat, the sailing
+	// boat's new seats under their own keys Place0.. / DogPlace0 (its old Seat tunes were for the rowboat's seats)) ----
+	struct KindTunes { bool loaded = false; Tune human[kHumans]{}, dog[kDogs]{}; };
+	inline KindTunes g_tunes[3];
+	// v1.8.52: the sailing boat's keys Spot0.. / DogSpot0 (its Place tunes of v1.8.51 are in the seats themselves now)
+	inline std::string TuneKey(int a_kind, bool a_dog, int a_slot) { return a_kind == 1 ? std::format("{}{}", a_dog ? "DogSpot" : "Spot", a_slot) : std::format("{}{}", a_dog ? "Dog" : "Seat", a_slot); }
+	inline KindTunes& TunesOf(int a_kind)
 	{
-		if (g.tunesLoaded) return;
-		g.tunesLoaded = true;
+		a_kind = std::clamp(a_kind, 0, 2);
+		auto& kt = g_tunes[a_kind];
+		if (kt.loaded) return kt;
+		kt.loaded = true;
 		const auto ini = Plankton::IniPath();
 		auto read = [&](const std::string& a_key, Tune& a_t) {
 			char buf[96]{};
-			GetPrivateProfileStringA("CrewSeats", a_key.c_str(), "", buf, sizeof(buf), ini.c_str());
+			GetPrivateProfileStringA(RowRimBakedIni::BoatSec(a_kind, "CrewSeats"), a_key.c_str(), "", buf, sizeof(buf), ini.c_str());
 			float v[4]{};
 			if (std::sscanf(buf, "%f %f %f %f", &v[0], &v[1], &v[2], &v[3]) == 4) a_t = { v[0], v[1], v[2], v[3] / 57.2958f };
 		};
-		for (int i = 0; i < kHumans; ++i) read(std::format("Seat{}", i), g.human[i]);
-		for (int i = 0; i < kDogs; ++i) read(std::format("Dog{}", i), g.dog[i]);
+		for (int i = 0; i < kHumans; ++i) read(TuneKey(a_kind, false, i), kt.human[i]);
+		for (int i = 0; i < kDogs; ++i) read(TuneKey(a_kind, true, i), kt.dog[i]);
+		return kt;
 	}
-	inline void SaveTune(bool a_dog, int a_slot)
+	inline Tune& TuneOf(int a_kind, bool a_dog, int a_slot)
 	{
-		const Tune& t = a_dog ? g.dog[a_slot] : g.human[a_slot];
+		auto& kt = TunesOf(a_kind);
+		return a_dog ? kt.dog[std::clamp(a_slot, 0, kDogs - 1)] : kt.human[std::clamp(a_slot, 0, kHumans - 1)];
+	}
+	inline void SaveTuneK(int a_kind, bool a_dog, int a_slot)
+	{
+		const Tune& t = TuneOf(a_kind, a_dog, a_slot);
 		const std::string v = std::format("{:.1f} {:.1f} {:.1f} {:.1f}", t.x, t.y, t.z, t.yaw * 57.2958f);
-		WritePrivateProfileStringA("CrewSeats", std::format("{}{}", a_dog ? "Dog" : "Seat", a_slot).c_str(), v.c_str(), Plankton::IniPath().c_str());
+		WritePrivateProfileStringA(RowRimBakedIni::BoatSec(a_kind, "CrewSeats"), TuneKey(a_kind, a_dog, a_slot).c_str(), v.c_str(), Plankton::IniPath().c_str());
+	}
+	inline void LoadTunes() { TunesOf(g.pose.kind); }
+	inline void ReloadTunes() {}  // v1.8.51: each boat's own are kept apart (nothing to reload on a change of boat)
+	inline void SaveTune(bool a_dog, int a_slot) { SaveTuneK(g.pose.kind, a_dog, a_slot); }
+	// v1.8.51: the menu's seat tuning (Settings / Crew): a_save on letting go of a slider
+	inline void SetTune(int a_kind, bool a_dog, int a_slot, const Tune& a_t, bool a_save)
+	{
+		TuneOf(a_kind, a_dog, a_slot) = a_t;
+		if (a_save) {
+			SaveTuneK(a_kind, a_dog, a_slot);
+			logger::info("Crew: {} seat '{}' tuned: {:.1f} {:.1f} {:.1f} turn {:.0f} deg", a_kind == 1 ? "sailing boat" : a_kind == 2 ? "longship" : "rowboat", Def(a_kind, a_dog, a_slot).name, a_t.x, a_t.y, a_t.z, a_t.yaw * 57.2958f);
+		}
 	}
 
+	// v1.8.51: the seat's spot in the boat's frame (game units, unrotated) and the way it faces from the bow
+	inline RE::NiPoint3 SeatLocal(int a_kind, float a_scale, bool a_dog, int a_slot, float& a_yaw)
+	{
+		if (a_dog && g.dogStern && a_kind == 0) {  // v1.7.36: out of the bed's way, on the floorboards forward of the stern seat, looking aft
+			a_yaw = 3.14159265f;
+			return RE::NiPoint3{ 0.0f, -168.0f, 43.0f } * a_scale;
+		}
+		const SeatDef& s = Def(a_kind, a_dog, a_slot);
+		const Tune& t = TuneOf(a_kind, a_dog, a_slot);
+		a_yaw = s.yaw + t.yaw;
+		return RE::NiPoint3{ s.pos.x * a_scale + t.x, s.pos.y * a_scale + t.y, s.pos.z * a_scale + t.z };
+	}
 	// where a rider sits (world) and faces
 	inline RE::NiPoint3 SeatWorld(const Pose& a_p, bool a_dog, int a_slot, float& a_yaw)
 	{
-		LoadTunes();
-		const SeatDef& s = a_dog ? kDog[a_slot] : kHuman[a_slot];
-		const Tune& t = a_dog ? g.dog[a_slot] : g.human[a_slot];
-		if (a_dog && g.dogStern) {  // v1.7.36: out of the bed's way, on the floorboards forward of the stern seat, looking aft
-			a_yaw = a_p.yaw + 3.14159265f;
-			return a_p.at + a_p.rot * RE::NiPoint3{ 0.0f, -168.0f, 43.0f };
-		}
-		RE::NiPoint3 l{ s.pos.x + t.x, s.pos.y + t.y, s.pos.z + t.z };
-		a_yaw = a_p.yaw + s.yaw + t.yaw;
+		float yl = 0.0f;
+		const RE::NiPoint3 l = SeatLocal(a_p.kind, a_p.scale, a_dog, a_slot, yl);
+		a_yaw = a_p.yaw + yl;
+		return a_p.at + a_p.rot * l;
+	}
+	// v1.8.51: where one gets up (world): a seat's own floor spot, or by the seat
+	inline RE::NiPoint3 StandWorld(const Pose& a_p, bool a_dog, int a_slot, bool a_tuned)
+	{
+		const SeatDef& s = Def(a_p.kind, a_dog, a_slot);
+		const Tune& t = TuneOf(a_p.kind, a_dog, a_slot);
+		const float up = a_p.deckZ + (a_dog ? 14.0f : 4.0f);
+		const RE::NiPoint3 l = s.standAt ? RE::NiPoint3{ s.standOff.x * a_p.scale, s.standOff.y * a_p.scale, up }
+		                                 : RE::NiPoint3{ (s.pos.x + s.standOff.x) * a_p.scale + (a_tuned ? t.x : 0.0f), (s.pos.y + s.standOff.y) * a_p.scale + (a_tuned ? t.y : 0.0f), up };
 		return a_p.at + a_p.rot * l;
 	}
 	inline bool SlotFree(bool a_dog, int a_slot, const Pose& a_p)
 	{
-		if (!a_dog) {
+		if (!a_dog && a_p.kind != 1) {  // v1.8.51: the sailing boat's seats are all the passengers' (you are at the helm)
 			if (a_slot == 0 && !a_p.playerRows) return false;  // the stern seat is the player's
 			if (a_slot == 5 && a_p.playerRows) return false;   // the middle thwart is the player's
 		}
@@ -319,7 +391,12 @@ namespace Crew
 	{
 		static constexpr int kOrder[] = { 1, 2, 3, 4, 0, 5 };  // the thwarts first, then the stern seat / middle thwart
 		if (a_dog) {
-			for (int i = 0; i < kDogs; ++i) if (SlotFree(true, i, a_p)) return i;
+			for (int i = 0; i < DogCount(a_p.kind); ++i) if (SlotFree(true, i, a_p)) return i;
+			return -1;
+		}
+		if (a_p.kind == 1) {  // v1.8.53: the front ledge (starboard foredeck edge) first, then port foredeck edge, beside you, the rail
+			static constexpr int kSailOrder[] = { 2, 0, 1, 3 };
+			for (int i : kSailOrder) if (SlotFree(false, i, a_p)) return i;
 			return -1;
 		}
 		for (int i : kOrder) if (SlotFree(false, i, a_p)) return i;
@@ -364,10 +441,25 @@ namespace Crew
 		logger::info("Crew: {} {:08X} shield {} back on", a_actor->GetName(), a_actor->GetFormID(), sh->GetName());
 	}
 
+	inline bool g_ledgeLogged = false;
 	inline void SitNow(Rider& a_r, RE::Actor* a_actor)
 	{
 		if (a_r.dog) {
 			a_actor->NotifyAnimationGraph("idleSitStart");
+			return;
+		}
+		if (a_r.ledge) {  // v1.8.51: the ledge sit (the game's own, legs over the edge)
+			const char* took = nullptr;
+			for (const char* ev : { "IdleSitLedgeEnterInstant", "IdleSitLedgeEnter" }) {
+				if (a_actor->NotifyAnimationGraph(ev)) { took = ev; break; }
+			}
+			a_r.sentAt = g.time;
+			{
+				std::lock_guard lock(g_flagMx);
+				auto it = g_flags.find(a_r.id);
+				if (it != g_flags.end()) it->second.stood = false;
+			}
+			if (!g_ledgeLogged || !took) { g_ledgeLogged = true; logger::info("Crew: {:08X} ledge sit {}", a_r.id, took ? took : "refused (no ledge sit in their graph)"); }
 			return;
 		}
 		for (const char* ev : { "IdleChairEnterInstant", "IdleChairSitting" }) {
@@ -393,6 +485,7 @@ namespace Crew
 		r.id = a_actor->GetFormID();
 		r.dog = a_dog;
 		r.slot = a_slot;
+		r.ledge = !a_dog && Def(a_p.kind, false, a_slot).ledge;  // v1.8.51
 		r.sitTimer = 0.0f;
 		r.idleTimer = Plankton::Rand(15.0f, 40.0f);
 		r.dogLieAfter = Plankton::Rand(15.0f, 35.0f);  // v1.7.35
@@ -402,7 +495,7 @@ namespace Crew
 		SitNow(r, a_actor);
 		g.riders.push_back(r);
 		static auto* fol = RE::TESForm::LookupByID<RE::TESFaction>(0x0005C84E);
-		logger::info("Crew: {} {:08X} {} ({}; teammate {}, follower rank {}, crew {})", a_actor->GetName(), r.id, a_how, a_dog ? kDog[a_slot].name : kHuman[a_slot].name,
+		logger::info("Crew: {} {:08X} {} ({}; teammate {}, follower rank {}, crew {})", a_actor->GetName(), r.id, a_how, Def(a_p.kind, a_dog, a_slot).name,
 			a_actor->IsPlayerTeammate() ? "yes" : "no", fol && a_actor->IsInFaction(fol) ? a_actor->GetFactionRank(fol, false) : -99, IsCrew(a_actor) ? "yes" : "no");
 	}
 
@@ -470,12 +563,10 @@ namespace Crew
 			auto a = r.actor.get();
 			if (!a) continue;
 			if (a->IsDead() || !a->Is3DLoaded()) { LetGo(a.get()); continue; }
-			const SeatDef& s = r.dog ? kDog[r.slot] : kHuman[r.slot];
-			const Tune& t = r.dog ? g.dog[r.slot] : g.human[r.slot];
 			// v1.7.21: put down first with no speed, a little higher for the dog (its body overlapped the hull's collision
-			// when that came back on, and the physics threw it out), then its collision on
-			const RE::NiPoint3 l{ s.pos.x + t.x + s.standOff.x, s.pos.y + t.y + s.standOff.y, a_p.deckZ + (r.dog ? 14.0f : 4.0f) };
-			a->SetPosition(a_p.at + a_p.rot * l, true);
+			// when that came back on, and the physics threw it out), then its collision on. v1.8.51: the sailing boat's
+			// seats each have their own spot on the floorboards (from the rail: in the boat, never the sea)
+			a->SetPosition(StandWorld(a_p, r.dog, r.slot, true), true);
 			if (auto* cc = a->GetCharController()) cc->SetLinearVelocityImpl(RE::hkVector4());
 			LetGo(a.get());
 			if (auto* cc = a->GetCharController()) cc->SetLinearVelocityImpl(RE::hkVector4());
@@ -548,6 +639,48 @@ namespace Crew
 	}
 
 	// every frame while the player is seated (after the player's own glue); a_linger: the player stood up, they wait
+	// v1.8.22: seated aboard, they start no greetings, no "hello" as you pass and no idle remarks (v1.8.22b: they may
+	// still chat with each other: the conversation timer is left alone):
+	// the AI's cooldowns for those are held up every frame (they count down to the next allowed line). Lines the game
+	// plays on purpose still play (the bump reactions, anything you start by talking to them).
+	inline void Hush(RE::Actor* a_actor)
+	{
+		auto* proc = a_actor->GetActorRuntimeData().currentProcess;
+		auto* high = proc ? proc->high : nullptr;
+		if (!high) return;
+		high->greetingTimer = (std::max)(high->greetingTimer, 20.0f);
+		high->detectGreetTimer = (std::max)(high->detectGreetTimer, 20.0f);
+		high->idleTimer = (std::max)(high->idleTimer, 20.0f);
+	}
+
+	// v1.8.29c: you sat where one of them still sat (they waited seated after you got up, then you took their seat: you sat
+	// inside them): they move over to a free seat, or stand up if there is none
+	inline void MakeRoom(const Pose& a_p)
+	{
+		for (auto it = g.riders.begin(); it != g.riders.end();) {
+			const bool mine = !it->dog && ((a_p.playerRows && it->slot == 5) || (!a_p.playerRows && it->slot == 0));
+			if (!mine) { ++it; continue; }
+			if (it->id == g.rowerId) { g.rowerId = 0; g.rowerRowing = false; }
+			const int was = it->slot;
+			it->slot = -1;
+			const int ns = FreeSlot(false, a_p);
+			auto a = it->actor.get();
+			if (ns >= 0) {
+				it->slot = ns;
+				it->sitTimer = 0.0f;
+				logger::info("Crew: {:08X} moves over from seat {} to {} (your seat now)", it->id, was, ns);
+				++it;
+			} else {
+				if (a) {
+					a->SetPosition(StandWorld(a_p, false, was, false), true);
+					if (auto* cc = a->GetCharController()) cc->SetLinearVelocityImpl(RE::hkVector4());
+					LetGo(a.get());
+				}
+				logger::info("Crew: {:08X} gets up from seat {} for you (no other seat free)", it->id, was);
+				it = g.riders.erase(it);
+			}
+		}
+	}
 	inline void Glue(const Pose& a_p, float a_dt, bool a_linger)
 	{
 		g.time += a_dt;
@@ -555,6 +688,7 @@ namespace Crew
 		g.havePose = true;
 		if (!g.aboard) return;
 		if (!a_linger && g.lingering) { g.lingering = false; logger::info("Crew: you sat down again, they stay seated"); }
+		if (!a_linger) MakeRoom(a_p);  // v1.8.29c: never two in one seat
 		if (!a_linger && !a_p.playerRows && !g.riders.empty() && !Rower()) PickRower(a_p);  // v1.7.9: a new rower if the last one left
 		for (auto it = g.riders.begin(); it != g.riders.end();) {
 			auto a = it->actor.get();
@@ -567,9 +701,7 @@ namespace Crew
 			// v1.7.38: dismissed while aboard (no longer a follower, not in the crew): put on the floor by their seat and let go,
 			// never taken aboard again unless they follow you again
 			if (!IsFollower(a.get()) && !IsCrew(a.get())) {
-				const SeatDef& s = it->dog ? kDog[it->slot] : kHuman[it->slot];
-				const RE::NiPoint3 l{ s.pos.x + s.standOff.x, s.pos.y + s.standOff.y, a_p.deckZ + (it->dog ? 14.0f : 4.0f) };
-				a->SetPosition(a_p.at + a_p.rot * l, true);
+				a->SetPosition(StandWorld(a_p, it->dog, it->slot, false), true);
 				if (auto* cc = a->GetCharController()) cc->SetLinearVelocityImpl(RE::hkVector4());
 				LetGo(a.get());
 				if (it->id == g.rowerId) { g.rowerId = 0; g.rowerRowing = false; }
@@ -589,6 +721,7 @@ namespace Crew
 			a->SetAngle(RE::NiPoint3{ pitchX, 0.0f, yaw });
 			if (auto* cc = a->GetCharController()) cc->SetLinearVelocityImpl(RE::hkVector4());
 			a->SetGraphVariableBool("bHumanoidFootIKDisable", true);  // v1.6.5: foot IK lifted the feet onto the hull's collision
+			Hush(a.get());  // v1.8.22: no proximity chatter aboard
 			if ((it->sitTimer -= a_dt) <= 0.0f) {
 				if (it->dog) {
 					// OAS sit control: a dog only sits from a standing idle; lying down it must stand first (IdleStop)
@@ -623,10 +756,13 @@ namespace Crew
 					if (auto* st = a->AsActorState(); st && st->IsWeaponDrawn() && !a->IsInCombat()) a->DrawWeaponMagicHands(false);
 					const SeatFlags f = TakeFlags(it->id);
 					const bool rowing = g.rowerRowing && it->id == g.rowerId;  // v1.7.9: the row clip, not a chair sit
-					if (!f.seated && !rowing && g.time - it->idleAt > 4.0f) SitNow(*it, a.get());
+					const bool ledge = Def(a_p.kind, false, it->slot).ledge;  // v1.8.51
+					if (ledge != it->ledge) { it->ledge = ledge; SitNow(*it, a.get()); }
+					else if (ledge) { if (f.stood && g.time - it->sentAt > 2.0f) SitNow(*it, a.get()); }  // only once they are up again
+					else if (!f.seated && !rowing && g.time - it->idleAt > 4.0f) SitNow(*it, a.get());
 				}
 			}
-			if (!it->dog && it->id != g.rowerId && (it->idleTimer -= a_dt) <= 0.0f) {
+			if (!it->dog && !it->ledge && it->id != g.rowerId && (it->idleTimer -= a_dt) <= 0.0f) {
 				it->idleTimer = Plankton::Rand(25.0f, 55.0f);
 				const SeatFlags f = TakeFlags(it->id);
 				if (f.seated) {  // a chair idle only from the seat
@@ -737,7 +873,7 @@ namespace Crew
 		auto* r = Selected();
 		if (!r) { Hud("Seat tuning: nobody aboard"); return; }
 		auto a = r->actor.get();
-		Hud(std::format("Seat tuning: {} ({})", a ? a->GetName() : "?", r->dog ? kDog[r->slot].name : kHuman[r->slot].name));
+		Hud(std::format("Seat tuning: {} ({})", a ? a->GetName() : "?", Def(g.pose.kind, r->dog, r->slot).name));
 	}
 	// DIK: Num7 47, Num8 48, Num9 49, Num4 4B, Num5 4C, Num6 4D, Num1 4F, Num2 50, Num3 51
 	inline int NumIndex(std::uint32_t a_id)
@@ -773,7 +909,7 @@ namespace Crew
 		if (!g.numOn) return;
 		auto* r = Selected();
 		if (!r) return;
-		Tune& t = r->dog ? g.dog[r->slot] : g.human[r->slot];
+		Tune& t = TuneOf(g.pose.kind, r->dog, r->slot);
 		const float mv = 15.0f * a_dt, tr = 0.8f * a_dt;  // 15 units / 45 deg a second
 		const Tune before = t;
 		if (g.held[8]) t.y += mv;
@@ -795,8 +931,9 @@ namespace Crew
 			return "seat tuning off";
 		}
 		if (a_arg == "reset") {
-			for (auto& t : g.human) t = {};
-			for (auto& t : g.dog) t = {};
+			auto& kt = TunesOf(g.pose.kind);
+			for (auto& t : kt.human) t = {};
+			for (auto& t : kt.dog) t = {};
 			for (int i = 0; i < kHumans; ++i) SaveTune(false, i);
 			for (int i = 0; i < kDogs; ++i) SaveTune(true, i);
 			return "all crew seat tunes reset";
@@ -807,10 +944,50 @@ namespace Crew
 		return "seat tuning on: Num5 picks who, 8/2 forward/back, 4/6 left/right, 9/3 up/down, 7/1 turn (saved per seat); oas num to stop";
 	}
 
+	// ---- v1.8.53: peace aboard: no animal fights a seated passenger (crew, followers, the dog) ----
+	// Every 0.2 s while anyone is seated: an animal (race keyword ActorTypeAnimal) whose combat target is a passenger stops
+	// its fight, and a passenger fighting an animal stops too. Nothing else is touched (no actor values changed, nothing
+	// saved): off the boat, or once they stand, the game is its own.
+	inline bool IsAnimal(RE::Actor* a_actor)
+	{
+		const auto* race = a_actor ? a_actor->GetRace() : nullptr;
+		return race && race->HasKeywordString("ActorTypeAnimal") && !race->HasKeywordString("ActorTypeNPC");
+	}
+	inline float g_peaceT = 0.0f;
+	inline std::unordered_set<RE::FormID> g_peaceLogged;
+	inline void TendPeace(float a_dt)
+	{
+		if (g.riders.empty()) { g_peaceLogged.clear(); return; }
+		if ((g_peaceT -= a_dt) > 0.0f) return;
+		g_peaceT = 0.2f;
+		auto* pl = RE::ProcessLists::GetSingleton();
+		if (!pl) return;
+		std::vector<RE::Actor*> riders;
+		for (auto& r : g.riders) if (auto a = r.actor.get(); a && !a->IsDead()) riders.push_back(a.get());
+		if (riders.empty()) return;
+		const auto isRider = [&](RE::Actor* a_t) { return a_t && std::find(riders.begin(), riders.end(), a_t) != riders.end(); };
+		for (auto& h : pl->highActorHandles) {
+			auto a = h.get();
+			if (!a || a->IsDead() || !a->IsInCombat() || isRider(a.get()) || !IsAnimal(a.get())) continue;
+			if (IsFollower(a.get()) || IsCrew(a.get())) continue;
+			auto t = a->GetActorRuntimeData().currentCombatTarget.get();
+			if (!t || !isRider(t.get())) continue;
+			a->StopCombat();
+			if (g_peaceLogged.insert(a->GetFormID()).second)
+				logger::info("Crew: peace: {} {:08X} leaves {} alone (seated aboard)", a->GetName(), a->GetFormID(), t->GetName());
+		}
+		for (auto* r : riders) {
+			if (!r->IsInCombat()) continue;
+			auto t = r->GetActorRuntimeData().currentCombatTarget.get();
+			if (t && IsAnimal(t.get())) r->StopCombat();
+		}
+	}
+
 	// ---- every frame (player update): summons, letting go after a load, the numpad ----
 	inline void Tick(float a_dt, bool a_haveBoat, const RE::NiPoint3& a_boatAt)
 	{
 		TendNum(a_dt);
+		TendPeace(a_dt);  // v1.8.53
 		if (!g.release.empty() && (g.releaseTimer -= a_dt) <= 0.0f) {
 			g.releaseTimer = 1.0f;
 			for (auto it = g.release.begin(); it != g.release.end();) {
@@ -893,19 +1070,24 @@ namespace Crew
 			return;
 		}
 		if (field == "clear") { g.crew.clear(); Say("Crew: cleared"); return; }
+		if (field == "markers") {  // v1.8.51: oas "crew markers on|off": pink markers on the seats of the boat in use
+			g_markers = idText.empty() ? !g_markers : (idText == "on" || idText == "1");
+			Say(std::format("Crew: seat markers {}", g_markers ? "on" : "off"));
+			return;
+		}
 		if (field == "list") {
 			if (g.crew.empty()) Say("Crew: nobody added yet (click an NPC, then oas \"crew add\")");
 			for (auto id : g.crew) {
 				auto* a = RE::TESForm::LookupByID<RE::Actor>(id);
 				if (!a) { Say(std::format("Crew: {:08X} (not loaded)", id)); continue; }
 				std::string where = "not aboard";
-				for (auto& r : g.riders) if (r.id == id) where = std::format("aboard, {}", r.dog ? kDog[r.slot].name : kHuman[r.slot].name);
+				for (auto& r : g.riders) if (r.id == id) where = std::format("aboard, {}", Def(g.pose.kind, r.dog, r.slot).name);
 				Say(std::format("Crew: {} {:08X} {}", a->GetName(), id, where));
 			}
 			for (auto& r : g.riders) {
 				if (std::find(g.crew.begin(), g.crew.end(), r.id) != g.crew.end()) continue;
 				auto a = r.actor.get();
-				Say(std::format("Aboard (follower): {} {:08X}, {}", a ? a->GetName() : "?", r.id, r.dog ? kDog[r.slot].name : kHuman[r.slot].name));
+				Say(std::format("Aboard (follower): {} {:08X}, {}", a ? a->GetName() : "?", r.id, Def(g.pose.kind, r.dog, r.slot).name));
 			}
 			return;
 		}
@@ -932,7 +1114,7 @@ namespace Crew
 			Say(std::format("Crew: summoning {} to the {}{}{}", queued, a_haveBoat ? "boat" : "you", skipped.empty() ? "" : ", skipped:", skipped));
 			return;
 		}
-		Say("Crew: oas \"crew add [refid]\" | \"crew remove [refid]\" | crew clear | crew list | crew summon | oas num (numpad seat tuning)");
+		Say("Crew: oas \"crew add [refid]\" | \"crew remove [refid]\" | crew clear | crew list | crew summon | \"crew markers on|off\" | oas num (numpad seat tuning)");
 	}
 
 	// ---- co-save ----

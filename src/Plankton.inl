@@ -61,9 +61,12 @@ namespace Plankton
 		{ -75.2f, -128.3f, 35.5f }, { -68.8f, 154.8f, 34.7f }, { 63.7f, 168.4f, 34.1f }, { 16.5f, -214.6f, 32.1f }, { 13.4f, -223.9f, 34.9f },
 		{ 81.5f, 64.1f, 32.6f }, { 60.4f, -156.5f, 27.6f }, { 72.0f, -116.3f, 29.3f }, { -79.1f, -89.7f, 33.8f } };
 
+	inline float g_hullX = 1.0f;  // v1.8.90: the hull outline widened for the boat in use (the sailing boat; 1 = the rowboat)
+
 	struct Settings
 	{
 		bool on = true;
+		bool everywhere = true;  // v1.8.79: [Plankton] Everywhere: the open water, shore and stirring plankton also away from the boat (on foot, swimming); 0 = only aboard
 		int force = 0;        // 0 by the time of day, 1 always (testing), -1 never
 		float density = 3.0f; // how many (v1.5.4: 3 by default, up to 6)
 		float size = 0.5f;    // how big each glow is (v1.5.4: 0.5 by default)
@@ -97,6 +100,7 @@ namespace Plankton
 		const auto ini = IniPath();
 		g_set.on = GetPrivateProfileIntA("Plankton", "On", 1, ini.c_str()) != 0;
 		g_set.force = GetPrivateProfileIntA("Plankton", "Force", 0, ini.c_str());
+		g_set.everywhere = GetPrivateProfileIntA("Plankton", "Everywhere", 1, ini.c_str()) != 0;
 		char buf[32]{};
 		GetPrivateProfileStringA("Plankton", "Density", "3.0", buf, sizeof(buf), ini.c_str());
 		try { g_set.density = std::clamp(std::stof(buf), 0.0f, 6.0f); } catch (...) {}
@@ -118,6 +122,7 @@ namespace Plankton
 		const auto ini = IniPath();
 		WritePrivateProfileStringA("Plankton", "On", g_set.on ? "1" : "0", ini.c_str());
 		WritePrivateProfileStringA("Plankton", "Force", std::to_string(g_set.force).c_str(), ini.c_str());
+		WritePrivateProfileStringA("Plankton", "Everywhere", g_set.everywhere ? "1" : "0", ini.c_str());
 		WritePrivateProfileStringA("Plankton", "Density", std::format("{:.2f}", g_set.density).c_str(), ini.c_str());
 		WritePrivateProfileStringA("Plankton", "Size", std::format("{:.2f}", g_set.size).c_str(), ini.c_str());
 		WritePrivateProfileStringA("Plankton", "OpenCount", std::to_string(g_set.open).c_str(), ini.c_str());
@@ -313,7 +318,7 @@ namespace Plankton
 				for (std::size_t j = 0; j + 1 < std::size(kOutlineY); ++j) {
 					if (y >= kOutlineY[j] && y <= kOutlineY[j + 1]) {
 						const float f = (y - kOutlineY[j]) / (kOutlineY[j + 1] - kOutlineY[j]);
-						w = kOutlineX[j] + (kOutlineX[j + 1] - kOutlineX[j]) * f;
+						w = (kOutlineX[j] + (kOutlineX[j + 1] - kOutlineX[j]) * f) * g_hullX;
 						break;
 					}
 				}
@@ -360,7 +365,7 @@ namespace Plankton
 		for (std::size_t j = 0; j + 1 < std::size(kOutlineY); ++j) {
 			if (a_y >= kOutlineY[j] && a_y <= kOutlineY[j + 1]) {
 				const float f = (a_y - kOutlineY[j]) / (kOutlineY[j + 1] - kOutlineY[j]);
-				return kOutlineX[j] + (kOutlineX[j + 1] - kOutlineX[j]) * f;
+				return (kOutlineX[j] + (kOutlineX[j + 1] - kOutlineX[j]) * f) * g_hullX;
 			}
 		}
 		return 0.0f;
@@ -780,6 +785,7 @@ namespace Plankton
 		float speed = 0.0f;
 		float waterZ = 0.0f;
 		bool water = false;
+		bool onBoat = false;  // v1.8.0: the plankton of the open water, the shore and the stirring only while you are on your boat
 	};
 
 	inline float Bright(const Glow& a_p)
@@ -832,12 +838,12 @@ namespace Plankton
 			camZ = cam.z;
 			haveCam = true;
 		}
-		if (Active() && haveCam) Flow::Tend(dt, cam);  // v1.7.8: the current round the camera
+		if (Active() && a_c.onBoat && haveCam) Flow::Tend(dt, cam);  // v1.7.8: the current round the camera
 		const bool flowing = Active() && Flow::Any();
 
 		// v1.5.3: the open water's own plankton all round you, untouched by the boat: kept topped up out to kAmbRadius, each
 		// fading in somewhere on open water, drifting slowly and fading out again after 8-30 s
-		if (Active() && haveCam && EnsureRoot()) {
+		if (Active() && a_c.onBoat && haveCam && EnsureRoot()) {  // v1.8.0: on the boat only
 			auto* tes = RE::TES::GetSingleton();
 			int live = 0;
 			for (int i = kAmbLo; i < kShoreLo; ++i) if (g.free[i].live) ++live;
@@ -915,7 +921,7 @@ namespace Plankton
 
 		// v1.5.9: the shoreline's own plankton, apart from the open water: single-file lines along the water's edge (and
 		// round rocks, jetty posts and moored boats), each line washing in and out with the water and creeping along the shore
-		if (Active() && haveCam && EnsureRoot()) {
+		if (Active() && a_c.onBoat && haveCam && EnsureRoot()) {  // v1.8.0: on the boat only
 			auto* tes = RE::TES::GetSingleton();
 			// water depth there: -1 no water (land), -999 not loaded (unknown, never an edge), 9999 unknown floor
 			auto depthAt = [&](float a_x, float a_y, float& a_w) -> float {
@@ -1044,7 +1050,7 @@ namespace Plankton
 		// open-water glows near them flare and are pushed aside
 		struct Wader { RE::NiPoint3 at; float w; float speed; };
 		std::vector<Wader> waders;
-		if (Active() && EnsureRoot()) {
+		if (Active() && a_c.onBoat && EnsureRoot()) {  // v1.8.0: on the boat only
 			auto* tes = RE::TES::GetSingleton();
 			std::vector<RE::Actor*> actors;
 			if (auto* player = RE::PlayerCharacter::GetSingleton()) actors.push_back(player);
@@ -1201,14 +1207,15 @@ namespace Plankton
 		else if (a == "night") g_set.force = 1;
 		else if (a == "auto") g_set.force = 0;
 		else if (a == "never") g_set.force = -1;
+		else if (a == "everywhere" || a == "boat") g_set.everywhere = a == "everywhere";  // v1.8.79
 		else if (a == "density") g_set.density = std::clamp(num(3.0f), 0.0f, 6.0f);
 		else if (a == "size") g_set.size = std::clamp(num(0.5f), 0.2f, 4.0f);
 		else if (a == "open") g_set.open = std::clamp(static_cast<int>(num(1800.0f)), 0, kAmbSharp + kAmbSoft);
 		else if (a == "opensize") g_set.openSize = std::clamp(num(1.0f), 0.2f, 4.0f);
 		else if (a == "shore") g_set.shore = std::clamp(static_cast<int>(num(400.0f)), 0, kShoreSharp + kShoreSoft);
-		else if (!a.empty()) return "plankton on|off | night (always, to test by day) | auto (by the time of day) | \"plankton density 3\" (0-6) | \"plankton size 0.5\" | \"plankton open 1800\" (open-water count, 0-2000) | \"plankton opensize 1\" | \"plankton shore 400\" (shoreline count, 0-400)";
+		else if (!a.empty()) return "plankton everywhere|boat (also away from the boat, or only aboard) | plankton on|off | night (always, to test by day) | auto (by the time of day) | \"plankton density 3\" (0-6) | \"plankton size 0.5\" | \"plankton open 1800\" (open-water count, 0-2000) | \"plankton opensize 1\" | \"plankton shore 400\" (shoreline count, 0-400)";
 		if (!a.empty()) SaveSettings();
-		return std::format("plankton {}, {}, density {:.2f}, size {:.2f}, open water {} size {:.2f}, shore {}, glow now {:.2f}", g_set.on ? "on" : "off",
+		return std::format("plankton {}{}, {}, density {:.2f}, size {:.2f}, open water {} size {:.2f}, shore {}, glow now {:.2f}", g_set.on ? "on" : "off", g_set.everywhere ? " everywhere" : " only aboard",
 			g_set.force > 0 ? "always (night forced)" : g_set.force < 0 ? "never" : "by the time of day", g_set.density, g_set.size, g_set.open, g_set.openSize, g_set.shore,
 			g_set.on ? NightAmount() : 0.0f);
 	}
@@ -1299,7 +1306,17 @@ namespace Underwater
 		g_fogHeld = true;
 	}
 
-	inline void Tend(float a_dt)
+	inline bool MenuUp(RE::UI* a_ui)
+	{
+		static const std::string_view kMenus[] = { RE::InventoryMenu::MENU_NAME, RE::ContainerMenu::MENU_NAME, RE::BarterMenu::MENU_NAME,
+			RE::GiftMenu::MENU_NAME, RE::LevelUpMenu::MENU_NAME, RE::TweenMenu::MENU_NAME, RE::MagicMenu::MENU_NAME, RE::FavoritesMenu::MENU_NAME,
+			RE::StatsMenu::MENU_NAME, RE::LockpickingMenu::MENU_NAME, RE::BookMenu::MENU_NAME, RE::CraftingMenu::MENU_NAME, RE::DialogueMenu::MENU_NAME,
+			RE::MapMenu::MENU_NAME, RE::JournalMenu::MENU_NAME, "LootMenu" };  // LootMenu: QuickLoot
+		for (const auto& m : kMenus)
+			if (a_ui->IsMenuOpen(m)) return true;
+		return false;
+	}
+	inline void Tend(float a_dt, bool a_onBoat)
 	{
 		Load();
 		auto* ism = RE::ImageSpaceManager::GetSingleton();
@@ -1310,15 +1327,24 @@ namespace Underwater
 		auto* cell = tes->GetCell(cam);
 		float w = 0.0f;
 		const bool known = cell && cell->IsAttached() && cell->GetWaterHeight(cam, w) && std::isfinite(w) && std::abs(w) < 1000000.0f;
+		if (known) {  // v1.8.10: on the OceanRim sea, the waves: in a trough the camera can be below sea level and still in the air
+			SeaLink::Find();
+			float wave = 0.0f;
+			if (SeaLink::g_surface && SeaLink::g_surface(cam.x, cam.y, w, &wave)) w = wave;
+		}
 		auto* ui = RE::UI::GetSingleton();
 		const bool paused = ui && ui->GameIsPaused();
-		const bool under = g_on && known && cam.z < w - 2.0f;
+		const bool under = g_on && a_onBoat && known && cam.z < w - 2.0f;  // v1.8.0: only from the boat (swimming: the game's own look)
 		if (under != g_was) {
 			g_was = under;
 			if (g_logs++ < 12) logger::info("Underwater: camera {} the water (camera z {:.0f}, water {:.0f}), our filter {}", under ? "under" : "out of", cam.z, w, g_on ? "on" : "off");
 		}
 		const float dt = paused ? 0.0f : std::clamp(a_dt, 0.0f, 0.1f);
 		g_amt = std::clamp(g_amt + (under ? 1.0f : -1.0f) * dt / 0.5f, 0.0f, 1.0f);
+		// v1.8.0: hands off the image space while a menu is up: the inventory, containers, the level up screen and the
+		// like put their own look in the same override (the item view, the blurred background); taking it every frame
+		// left them broken underwater (no looting, no inventory, the UI gone). Our look comes back when the menu closes.
+		if (ui && (paused || MenuUp(ui))) { Release(ism); return; }
 		auto& rd = ism->GetRuntimeData();
 		if (!g_holding) {  // the game's look, to fade from (whatever it is using now)
 			const auto* cur = rd.overrideBaseData ? rd.overrideBaseData : rd.currentBaseData;

@@ -47,8 +47,11 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <cstdio>
 
 #include <xmmintrin.h>
+#include <atomic>
+#include "SKSEMenuFramework.h"  // v1.7.86: the settings page (MenuUi.inl); LGPL API header, see SKSEMenuFramework_LICENSE.txt
 
 // Defaults baked from the supplied RowRim.ini. Keep this before the .inl includes:
 // their existing Win32 INI readers use these fallbacks too. A real INI value always
@@ -56,9 +59,15 @@
 namespace RowRimBakedIni
 {
 	struct Entry { const char* section; const char* key; const char* value; };
+	// v1.8.32c: Miguel's settings from the game (RowRim.ini, 8 Nov) are the defaults. Not baked: the boat in use, its sail
+	// state, the debug grid, and [Sail] Enabled (sailing stays off in a release until said otherwise). A boat's own section
+	// ([SailBoat.Sea], [Longship.Wake] ...) is looked up as itself first, then as the shared one.
 	inline constexpr Entry kDefaults[] = {
 		{ "Longboat", "Handling", "2" },
 		{ "Boat", "BakedTuneReset", "68" },
+		{ "Boat", "Carry", "1" },
+		{ "Boat", "CarryJump", "0" },
+		{ "Boat", "SailModel", "sailskin" },
 		{ "Rower", "PlayerRight", "-2" },
 		{ "Rower", "PlayerForward", "247" },
 		{ "Rower", "PlayerUp", "22" },
@@ -67,7 +76,7 @@ namespace RowRimBakedIni
 		{ "LakeBoats", "Count", "3" },
 		{ "LakeBoats", "View", "5" },
 		{ "LakeBoats", "Defaults", "2" },
-		{ "Plankton", "On", "1" },
+		{ "Plankton", "On", "1" },  // v1.8.90: on by default, at night only (Force 0)
 		{ "Plankton", "Force", "0" },
 		{ "Plankton", "Density", "3.00" },
 		{ "Plankton", "Size", "0.40" },
@@ -82,23 +91,19 @@ namespace RowRimBakedIni
 		{ "CrewSeats", "Seat0", "8.3 -7.1 -4.5 0.0" },
 		{ "Controls", "PadZoom", "1" },
 		{ "Controls", "PadZoomSpeed", "1.2" },
-		{ "Row", "MaxSpeed", "300" },
-		{ "Row", "Glide", "0.070" },
-		{ "Row", "Turn", "1.00" },
-		{ "Clutter", "Bedroll", "0" },
+		{ "Row", "MaxSpeed", "265" },
+		{ "Row", "Glide", "0.151" },
+		{ "Row", "Turn", "0.67" },
+		{ "Row", "TurnLag", "2.50" },
+		{ "Clutter", "Bedroll", "1" },  // v1.8.53
 		{ "Clutter", "BedrollX", "1.5" },
-		{ "Clutter", "BedrollY", "70.9" },
+		{ "Clutter", "BedrollY", "71.1" },
 		{ "Clutter", "BedrollZ", "41.3" },
 		{ "Clutter", "BedrollYaw", "-90.0" },
-		{ "Clutter", "SuppliesX", "-49.3" },
-		{ "Clutter", "SuppliesY", "-148.2" },
-		{ "Clutter", "SuppliesZ", "40.3" },
-		{ "Clutter", "SuppliesYaw", "-45.4" },
 		{ "Camera", "BoatCam", "0" },
-		{ "Debug", "CellGrid", "0" },
-		{ "Crew", "StandUpAt", "400" },
+		{ "Crew", "StandUpAt", "388" },
 		{ "Wake", "HullSize", "0.00" },
-		{ "Wake", "HullOut", "31.1" },
+		{ "Wake", "HullOut", "34.6" },
 		{ "Wake", "HullEvery", "107" },
 		{ "Wake", "HullZ", "0.0" },
 		{ "Wake", "HullCount", "3" },
@@ -109,6 +114,44 @@ namespace RowRimBakedIni
 		{ "Wake", "SternZ", "0.00" },
 		{ "Wake", "SternSize", "1.00" },
 		{ "Wake", "SternStrength", "1.00" },
+		{ "Sail", "Speed", "0.80" },
+		{ "Sail", "Flap", "1.62" },
+		{ "Sail", "Rock", "1.56" },
+		{ "Sail", "Heel", "0.96" },
+		{ "Sail", "HeadWind", "0.71" },  // v1.8.53: Miguel's ini, 8 Nov evening
+		{ "Sail", "Enabled", "1" },      // v1.8.53: the sailing boat ships
+		{ "SailBoat", "MaxSpeed", "214" },
+		{ "SailBoat", "Glide", "0.151" },
+		{ "SailBoat", "Turn", "0.64" },
+		{ "SailBoat", "TurnLag", "3.50" },
+		{ "Longship", "MaxSpeed", "185" },
+		{ "Longship", "Glide", "0.151" },
+		{ "Longship", "Turn", "0.40" },
+		{ "Longship", "TurnLag", "3.60" },
+		{ "LongshipSail", "Speed", "1.00" },
+		{ "LongshipSail", "Flap", "1.92" },
+		{ "Sea", "Tilt", "1.010" },
+		{ "Sea", "Follow", "0.880" },
+		{ "Sea", "Softness", "0.200" },
+		{ "Sea", "MaxTilt", "13.000" },
+		{ "Sea", "Trim", "1.800" },
+		{ "Longship.Sea", "Follow", "1.000" },
+		{ "Wind", "Strength", "1.13" },
+		{ "Wind", "Wander", "0.49" },
+		{ "Wind", "Shifts", "1.02" },
+		{ "Wind", "HeadWind", "0.70" },
+		{ "Wind", "Streaks", "1.00" },  // v1.8.53
+		{ "SailBoat.Wake", "HullOut", "31.1" },
+		{ "Longship.Wake", "HullOut", "31.1" },
+		{ "SailBoat.Sea", "Follow", "1.360" },
+		{ "SailBoat.Sea", "Tilt", "1.500" },
+		{ "SailBoat.Sea", "Softness", "0.200" },
+		{ "SailBoat.Sea", "MaxTilt", "14.000" },
+		{ "SailBoat.Sea", "Trim", "2.500" },
+		{ "Longship.Sea", "Tilt", "1.500" },
+		{ "Longship.Sea", "Softness", "0.200" },
+		{ "Longship.Sea", "MaxTilt", "14.000" },
+		{ "Longship.Sea", "Trim", "2.500" },
 	};
 
 	inline bool EqualI(const char* a, const char* b)
@@ -120,14 +163,34 @@ namespace RowRimBakedIni
 		}
 		return *a == *b;
 	}
+	// v1.8.26: each boat its own settings: the rowboat [Wake] / [CrewSeats] / [Sea], the sailing boat [SailBoat.Wake] ...,
+	// the longship [Longship.Wake] ... (the baked defaults are the same for all three until a boat's own are tuned)
+	inline int g_iniKind = 0;  // the boat in use: 0 rowboat, 1 sailing boat, 2 longship
+	inline const char* BoatSec(int a_kind, const char* a_base)
+	{
+		if (a_kind <= 0 || a_kind > 2) return a_base;
+		static std::mutex m;
+		static std::unordered_map<std::string, std::string> names;  // node based: the strings never move
+		std::lock_guard lk(m);
+		const std::string key = std::to_string(a_kind) + a_base;
+		auto it = names.find(key);
+		if (it == names.end()) it = names.emplace(key, std::string(a_kind == 1 ? "SailBoat." : "Longship.") + a_base).first;
+		return it->second.c_str();
+	}
+	inline const char* BoatSec(const char* a_base) { return BoatSec(g_iniKind, a_base); }
 	inline const char* Find(const char* section, const char* key, const char* path)
 	{
 		if (!section || !key || !path) return nullptr; // Preserve Win32 enumeration.
 		const char* name = path;
 		for (const char* p = path; *p; ++p) if (*p == '/' || *p == '\\') name = p + 1;
 		if (!EqualI(name, "RowRim.ini")) return nullptr;
-		for (const auto& e : kDefaults)
+		for (const auto& e : kDefaults)  // v1.8.32c: the boat's own section first
 			if (EqualI(section, e.section) && EqualI(key, e.key)) return e.value;
+		if (_strnicmp(section, "SailBoat.", 9) == 0 || _strnicmp(section, "Longship.", 9) == 0) {  // v1.8.26: then the shared one
+			section += 9;
+			for (const auto& e : kDefaults)
+				if (EqualI(section, e.section) && EqualI(key, e.key)) return e.value;
+		}
 		return nullptr;
 	}
 	inline DWORD WINAPI ReadString(LPCSTR section, LPCSTR key, LPCSTR fallback,
@@ -150,15 +213,37 @@ namespace RowRimBakedIni
 
 namespace
 {
-	constexpr const char* kVersionShort = "v1.7.72";
+	constexpr const char* kVersionShort = "v1.8.90";
 	constexpr const char* kVersion =
-		"v1.7.72 (the hidden carrier is the mannequin only, never a person); v1.7.71 (a hidden carrier that is not the mannequin (a townsperson from a test build) is swapped for it; the carrier's base is logged on load); v1.7.70 (stray lake boat crew left standing in the water are removed); v1.7.69 (stray lamp lights and lanterns left glowing over lakes are swept away, the player's and the lake boats'); v1.7.68 (fewer messages on screen: only the ones that explain a stop (no rower, a drop ahead, no water to fish); bedroll and rower messages go to the log); v1.7.67 (stray Fishing Supplies left hovering in the tub at the boat spots are swept away all the time, not only after a load); v1.7.66 (the release no longer bundles Offset Movement Animation (it overwrote the real one and Pandora missed it); readme, tune sheet and license renamed for MO2); v1.7.65 (the oar swooshes removed (sprite streak and ribbon); the catch's plankton swirl stays); v1.7.64 (no plankton in streams, rivers, rapids or waterfalls: lakes and the sea only); v1.7.63 (the boat's hidden carrier is the player home mannequin (bald, bare, left alone by body, hair and physics mods), not a horse (horse mods took it for one of theirs); a save's horse carrier is swapped on load); v1.7.62 (auto-row: the game's Auto-Move key or button (C by default, follows the game's own binding) toggles rowing on while seated; back or standing up stops it); v1.7.61 (lighter boat bumps: the lake boat is shoved off along the hit as hard as you hit it and swung round, gliding away; yours loses a little way and recoils a touch); v1.7.60 (the oar swoosh a glowing ribbon (streak pieces laid along the blade's sweep that curl outward round the catch in a spiral, a bright spiral where the blade goes in)); v1.7.59 (the oar swooshes seen: their own 500 glows (the shared ones were always in use and took the streak over at once), twice the size, lasting longer); v1.7.58 (glowing swooshes behind the oar blades at night: a solid streak along each blade's sweep); v1.7.57 (the hull ripple moved forward, under the stowed bedroll); v1.7.56 (the bed's [E] at once after rowing: the put-away bed rides along with the boat, so laid out it is already on its spot); v1.7.55 (the first bump: a voiced vanilla \"Ow!\" / \"What was that for?\" (the Hit topic), no HUD text); v1.7.54 (your boat bumps the lake boats: pushed apart with a small recoil; their crew react the first time, row away fast the second, and blame you with a vanilla line the third (a bump counts at most every 3 s); never the same person twice in one boat; no HUD text when old Oars and Sails boats are cleared; at the stern without a rower: 'No rower, move to rower seat or have crew'); v1.7.53 (the tiller ripple dead centre; the hull ripple is the tiller's twin, dead centre under the rower; the oarlocks in their own forged iron texture); v1.7.52 (slaughterfish and mudcrabs leave you, your followers, the dog and the crew alone while you are aboard (not swimming); the hidden horse's breathing muted; the bed lantern further forward; the middle and aft oarlocks turn to cradle the shipped oars; foot IK off while standing aboard (a foot rose onto invisible collision)); v1.7.51 (two copies of RowRim installed at once (RowRim.dll and OarsAndSails.dll): the RowRim.dll copy does nothing, so nothing runs twice); v1.7.50 (the [E] prompts no longer end up elsewhere in the boat after rowing: once the boat is still, a prompt carried more than 30 from where it was placed or off its spot is placed fresh; the bed darker, its sides shaded); v1.7.49 (the bed is a patchwork fur and shearling camping bag (from Miguel's picture), fading in when laid out and out when packed up; the Fish prompt on the tub steady: the prompt proxies move with the boat instead of being deleted and placed again, a wider aim, reach 120); v1.7.48 (a leather and sheepskin sleeping bag in place of the game's bedroll mesh (\"Sleeping bag\" by Tactical_Beard, CC BY 4.0, retextured): drawn on the bed's spot while it is laid out, the bedroll furniture kept for sleeping); v1.7.47 (the bedroll is kept when packed up (disabled, enabled again when laid out) instead of a new bed placed and deleted each time: it no longer goes missing, and E on it again within 1.6 s is ignored (quick repeats could hang the game); the fish in the tub darker); v1.7.46 (no more going over waterfalls and ledges: the boat stops at the lip (forward or backing) with a HUD note, the v1.7.10 fall removed; a ledge needs ground level with the water at the lip (no false stops on open water); a tub of fish baked into the floorboards, port side aft, in place of the Fishing Supplies: their own mesh hidden, the supplies kept on the tub so E on it still uses them (no numpad placing for them)); v1.7.44 (the hull's ripples have their own settings, oas \"num hull\": size, how far out, how often, height, how many spots a side, the stem and the at-rest ripples on or off; oas \"num stern\" is the tiller only); v1.7.43 (the boat makes its own ripples in the water as the oars do: at the tiller and along the hull, often while moving or turning, now and then at rest; oas \"num stern\" to tune them); v1.7.42 (stood up before the game saves and when the map opens, as Oars and Sails did: no saves or fast travel from the seat); v1.7.41 (a save made while rowing no longer loads you frozen in the seat: you are stood up after the load); v1.7.40 (dismissed dogs (Meeko sent home stays your teammate in the game) never board or stay seated: a dog must be in the follower faction; the fishing supplies at 0.5; the tent and its stowed tarp and poles off for this release, the bedroll slung in leather and the lantern by the bed stay); v1.7.39 (only followers the game counts as your teammates board: dismissed Meeko stays off the boat); v1.7.38 (dismissed followers (Meeko too) are never taken aboard again, and one dismissed while aboard gets off the seat; deleting the boat takes the fishing supplies and the bed with it); v1.7.37 (the tent has its own textures (its fade had faded the rod, the stowed poles and the stowed tarp, which share them, to nothing); the tent draws solid once up, kept 4 clear of the wood; the spare oar removed); v1.7.36 (stowed: the tarp rolled and the bedroll (moved to starboard) slung under the bow thwart in leather straps, the tent poles bundled with rope along the port side forward, the spare oar flat against the port side under the thwarts; with the bed out the shipped oars lie aft of the tent (one lay through it) and the dog sits at the stern facing aft); v1.7.35 (the bed lantern under the bow thwart, clear of the bed; the dog lies down at its seat after a while (it was stood back up whenever it lay down); the tarp over the thwart knees and the bow rope too); v1.7.34 (the bed tent redone: a square way in on two posts up the hull sides and a crossbar (nothing over the bed), grey canvas over eave and ridge poles to the stem head, smooth over the gunwales and oarlocks; it fades in and out over 1.5 s with the bed, the bed too; a lit lantern on the floor by the bed"
-		"); v1.7.33 (with the bed laid out the oars lie along the gunwales in the middle and aft oarlocks; the tarp goes over the gunwales, rails and oarlocks); v1.7.32 (a canvas tarp tent over the bow while the bedroll is laid out: from the stem head aft over the bed on a ridge pole and two A-frames of skinny poles, no collision); v1.7.31 (standing up from the oars or the helm stops the row animation on the crew rower too (they were left rowing), and sends the stop again over the next second (E right as a stroke started could leave it playing); v1.7.30 (E straight on the fishing supplies goes through the boat's fishing too (marker, open water), never the bare one that turned you to the floor and left you stuck fishing; their prompt only close and standing); v1.7.29 (passengers get up and follow at 400 from the boat (about 6 m; RowRim.ini [Crew] StandUpAt); the fishing supplies placed 3 s after a load, and placed again if their 3D is not in the scene (unseen after a load); v1.7.28 (followers and the dog stay seated when you leave the oars or the helm, also when you step off the boat, until you walk 600 away, then get up and follow; the fishing and bedroll prompts only show up close (90); a fresh fishing marker each time (catches not shown after moving spots); the bedroll at 0.9); v1.7.27 (fishing: the marker is the fisher's standing spot (the fishing moves you onto it): on the floorboards where you stand, facing out over the side, so the rod is in your hands and reeling works; open water checked out to 450; the fishing supplies drawn right after a load); v1.7.26 (fishing from the boat: the fishing's own move of the player (into the water beside the boat) is undone, you stay where you stood on the deck); v1.7.25 (a drawn weapon or spell is put away before you sit at the oars or the helm, the sit waits for it (the camera broke when sitting with it out); the fishing marker on the boat's water, not 14000 down (you were taken underwater), and only on open water: land, shallows or something in the way off that side say so on the HUD); v1.7.24 (fishing from the boat: the supplies are linked to a fishing marker placed on the water off the side you face, as the Creation Club ones are (the cast went nowhere and left you stuck fishing); no fishing prompt or fishing while seated, only standing); v1.7.23 (E standing in the boat no longer sits you down: only the seat prompts do (pick up what you dropped in the boat again); the fishing supplies have their own prompt (Fish), also from the seat (you stand up and fish)); v1.7.22 (seated: your weapon sheathed and your shield taken off (back on when you stand), passengers sheathe theirs (still equipped) and take shields off too; no [E] Talk while seated and no dialogue opened by the E that sits you down or stands you up; E on the fishing supplies from the seat stands you up and starts fishing); v1.7.21 (soft collision: the bow eases to a stop at jetties, docks, longboats, wood and boulders (0.25-0.8 s, begun early enough), small rocks only bump the keel; the fishing supplies no longer fade at cell edges; passengers and the dog stay seated after you stand up until the boat settles, then stand clear of the hull (no dog thrown); fishing supplies found by the plugin's load index; the bedroll no longer respawned every frame at a cell edge; sitting down rolls the bedroll up for good (no more laying itself out when you stand or leave the boat); saved and stray beds removed after a load even with no boat out, strays over the water or by the boat swept for 30 s); v1.7.20 (oas \"grid on|off\": faint see-through walls on the world cell edges round you, your own cell brightest, the cell shown on the HUD as you cross); v1.7.19 (the rower guard never takes an engine late frame as a real move (the jump at row stop); the boat camera tried and removed"
-		"); v1.7.18 (the rower steadied on the boat before the game builds the third person camera from him, so the camera no longer shakes when the engine leaves him a frame behind; motion log reads the camera as drawn); v1.7.17 (the third person camera steadied where the game really reads it (GetTranslation): no shake when the engine leaves the rower a frame behind while rowing, no pull-in on cell hops; the rower takes row start/stop at once); v1.7.16 (motion log: the rower's pelvis, head and Camera3rd bone on the drawn boat, kinks flagged BONE); v1.7.15 (the hull's collision model, reloaded on a cell hop, hidden right before the draw too; motion log checks the drawn camera); v1.7.14 (seat guard: the rower and the third person camera held steady on the drawn boat: no 1-unit hiccup every ~1.7 s, no camera pull-in on cell hops; oas \"seatguard on|off\"); v1.7.13 (oas \"motionlog [seconds]\": a frame-by-frame log of the boat and the third person camera in RowRim_Motion.log); v1.7.12 (True Directional Movement paused while seated (its turn-toward-input wound the third person camera up until it could no longer look up or down); the orbit fix-up compares angles, never hundreds of radians; dog followers from any canine race and every current follower board); v1.7.11 (E on the bedroll rolled under the bow thwart (Unroll Bedroll) lays the game's own bedroll in the boat to sleep in, for good (oas \"bedroll roll\" to put it away); oas \"num gear\": the numpad places the bedroll and the fishing supplies (Num5 picks which), saved in [Clutter]); v1.7.10 (waterfalls and ledges as in the old Oars and Sails: row over a lip and the boat flies on with its speed, the bow dipping, and lands in the water below with a slap and a dip, or on the ground; no pull or throw; the hull feelers stay quiet with a fall ahead); v1.7.9 (look-at prompts: [E] Board Rowboat on the hull from the water, under it or beside it (you land standing on the floorboards), [E] Steer Helm on the stern seat, [E] Row Oars on the middle thwart, through invisible activators from OarsAndSails.esl; with followers aboard and you at the stern, one of them (never the dog) is picked at random to row: W/S/A/D steer them, the oars follow their hands; a 13th boat spot at Dawnstar); v1.7.8 (the Oars and Sails update: console command oas again (rr still works); boat spots: your boat waits at the docks in RowRim_Docks.ini, oas \"dock add <name>\"; old Oars and Sails boats in a save are cleared away (their chest's contents given to you) and OarsAndSails.esl stays as an obsolete stub; plankton rides the current in rivers and rapids; 3 NPC boats a lake by default; no ghosts, necromancers or templated NPCs rowing the lake boats, robed ones change into plain, fur or hide clothes; rowing speed, glide and turning saved in RowRim.ini [Row] (taken over from OarsAndSails.ini once), oas \"row turn N\"; controller: the mapped Activate button always works seated, R3 + left stick or L3 + right stick zooms ([Controls]); oas help, status, \"reset settings\"); v1.7.7 (no more \"Ride Horse\" on the hidden carrier: its activate text and activation refused through the horse base's vtable; clutter meshes fixed (each piece its own shader property), placeholder textures, keg out, rod in a holder on the hull side, fish bones sprite in the hull); v1.7.0 (boat clutter: a bucket, a spare oar under the thwarts, an ale keg under the aft thwart, a bedroll tied under the bow thwart, a fishing rod trolling off the stern, fish bones by the rope; usable Fishing Supplies (Creation Club Fishing) left of the stern seat, [Clutter]); v1.6.6 (rowing off from rest the boat and passengers drop back only a sliver (drawn 0.7 of the way to this frame, rr \"lead N\"); the player's foot IK held off at the camera update too; a hang watchdog writes our last step to the log); v1.6.5 (seated feet no longer jump up: foot IK off while seated for the player, passengers and lake boat crew"
-		"); v1.6.4 (passengers drawn on their seats on the boat as drawn (no more sliding off it while rowing); lake boat crew from a save removed after the load (their Fisherman name is not saved, so they were kept and sat on the water while new crew rowed off): the co-save keeps each part with its base); v1.6.3 (crew sit only when not seated (OAS: seated state from their animation events), no more flicker and jumps; standing floor raised 2.5 onto the floorboards; crew seats 5 higher, feet on the boards); v1.6.2 (one dog only, in the OAS dog seat in the bow, facing forward, leaning with the boat, OAS sit control); v1.6.1 (seated player and crew moved with the boat as OAS did (glued each frame, the boat drawn one frame behind), no longer pinned onto the hull; rr \"draw pin\" for the old way); v1.6.0 (crew and passengers from OAS: followers and rr \"crew add\" NPCs board with you on the thwarts (dogs on the floor), late arrivals hop in, rr crew remove|clear|list|summon; rr num: numpad seat tuning, Num5 picks who); v1.5.19 (the stern trail stronger and paler, easy to see again); v1.5.18 (wake: the V is off for now; the stern trail as wide as the hull from the start); v1.5.17 (wake: the V a faint grey-green sheen, the stern trail round foam patches each turned and sized its own way so it never repeats); v1.5.16 (the boat lays a real V wake: two arms off the bow at the Kelvin angle past both sides and a churned wash behind the stern, meshes on the water, fading out as far as the plankton wake; [Wake] On); v1.5.15 (underwater the view blues out by about 30 m: our own distance fog over the sky's while the camera is under, plankton fading with it; [Underwater] FogNear / FogFar); v1.5.14 (our own underwater filter for the camera: a clear cool teal with easier bloom so the plankton shows, through the image space override, never the water system; rr underwater on|off); v1.5.13 (oar plankton swirls wider, spreading out and fading sooner; far more glows stuck to the hull and oar blades, bigger, kept glowing with the oars out of the water); v1.5.12 (open-water plankton out to 7000 (was 3600), 1800 of them by default with the wake's fine scatter mixed in; ini key now OpenCount); v1.5.11 (plankton like the concept: finer and far denser sparkles, a wake hugging both sides that opens into a V behind, oar swirls that linger, lake boats light their own wake and oar swirls); v1.5.10 (shoreline plankton scattered in loose patches that hug and curl with the shore, no more single-file rows; open water no longer gets shore spots at sheer drops); v1.5.9 (shoreline plankton is its own pool, apart from the open water: single-file lines along the water's edge and round rocks, jetties and moored boats, washing in and out and creeping along; rr \"plankton shore N\"); v1.5.8 (the v1.5.1 underwater camera fix is off: forcing the water system underwater crashed its culling); v1.5.7 (walking far off and back no longer leaves the boat without collision: the hull is re-homed into your cell once you are back within 3000); v1.5.6 (open-water plankton thick along shorelines and round rocks, jetties and moored boats; anyone wading or swimming stirs it: bursts round them, nearby glows flare and are pushed aside); v1.5.5 (open-water plankton has its own count and size: rr \"plankton open N\", rr \"plankton opensize N\"); v1.5.4 (open-water plankton fixed (dropped the frame it was made), 600 of them at density 3; density 3 and size 0.5 by default, density up to 6, bigger pools); v1.5.3 (plankton never drawn through the hull; the open water all round has its own plankton out to 3600, fading in, drifting and fading out, farther ones drawn bigger); v1.5.2 (plankton: diffuse, slower glows under the surface next to the sparkles on it, oar swirls chaotic: two or three eddies, own spin speeds, some against the swirl, churn, some flung out"
-		"); v1.5.1 (third person camera keeps the underwater look however deep it goes; plankton drawn on the surface when seen from above, bigger, scattered over the whole hull waterline, the oar blade ones fixed); v1.5.0 (bioluminescent plankton at dusk and night: oar catches stir spiralling, sinking clusters, the hull lights a wake, a few glows cling to the hull and the oar blades; rr plankton); v1.4.4 (player boat lantern on the stern spiral, swinging, lit at night; thwarts moved 6.5 toward the bow and all oarlocks matched to the middle pair); v1.4.3 (hidden carrier horse can no longer be ridden or show a prompt); v1.4.2 (lake boat lanterns hang from the stern spiral and swing like the OAS player lantern, candle flame off, light kept); v1.4.1 (after-load purge only removes our own lake boat parts, actors deleted 2 s after disable); v1.4.0 (OAS soft physics: beach glide, ground lift and tilt, bank governor, ice, rocks, 12 feelers; lighter standing weight fore and aft; oar seat where the clip sits; no rowing from the stern; lake rowers stay seated between rows)";  // v1.7.51: in pieces (MSVC: one string literal at most 16 KB, C2026)
+		"v1.8.90 (plankton: on by default, night only; the plankton of the sailing boat follow its own hull: wider than the rowboat's)\n"
+		"v1.8.89 (menu: three buttons per boat: Spawn boat (puts it ahead of you and makes it the one in use), Use this boat (makes it the one in use, and it stays so until you sit in or board another boat), Dock here for good; oas spawn <boat>, oas use <boat>)\n"
+		"v1.8.88 (menu: \"Dock here for good\" on each boat's page and the Boat tab: places the boat ahead of you and saves the spot as a shipped dock in RowRim_Docks.ini (Boat=row|sail), oas home perm <boat>)\n"
+		"v1.8.87 (shipped docks for the sailing boat: a Dock entry with Boat=sail in RowRim_Docks.ini calls the sailing boat, as the others call the rowboat; oas boat sail, then oas dock add <name> where it should wait)\n"
+		"v1.8.86 (rowing: the glide between strokes is back as it was before v1.8.81)\n"
+		"v1.8.85 (standing up from the boat: the game's own camera pitch is kept level while ours runs and put level when it takes over, so it no longer sits under the water looking up at you; uncertain)\n"
+		"v1.8.84 (the Queen Anne's Revenge test ship is taken out of the build: her boat, her settings and her page)\n"
+		"v1.8.83 (menu: an Advanced page with the seated draw mode per boat, saved in [Advanced] DrawRow / DrawSail; automatic = the rowboat pinned, the others as before)\n"
+		"v1.8.82 (the rowboat is drawn pinned: the boat at this frame's pose and the rower pinned to the seat, so the row clip cannot move him off the drawn boat; oas \"draw old\" is no longer the rowboat's default; uncertain, a soft rule)\n"
+		"v1.8.81 (rowing: no glide between strokes, the boat's speed is steady instead of surging and dropping with every stroke; top speed and acceleration unchanged)\n"
+		"v1.8.80 (ALL fishing removed from the rowboat: no Fishing Supplies, no Fish prompt or button, no fishing code; the Creation Club Fishing is no longer used at all; Fishing Supplies and markers older versions left in a save are swept away after a load)\n"
+		"v1.8.79 (plankton also away from the boat by default, [Plankton] Everywhere=0 or the Effects page to keep it aboard only; cleanup: the free camera, the camera offsets and the old camera fixes taken out; the helm camera is back, with its own wheel and pad zoom (closest .. 60000, [HelmCam] MaxDist) and the look from the raw mouse / right stick, never the player controls' look input; log lines every 10 s instead of every half second; version list cut: older ones in the src briefs); "
+		"v1.8.78 (the camera spin: the row and the tiller clips turn a bone the game's third person camera follows (animationRotation, toggleAnimCam): cut off every frame before and after the game's camera update on every boat seat, logged as \"AnimCam\"); "
+		"v1.8.77 (the camera started again from the game's own third person camera: every camera fix and our helm camera and the free camera taken out; Camera page: X / Y / Z offset sliders (right / along the view / up) on a boat, [Camera] OffsetX / Y / Z); "
+		"v1.8.76 (the helm camera is the free camera (the TFC state) from 2.5 s after you sit: ours every frame, mouse orbit and wheel zoom our own, boat input read raw; stands back to third person when you leave; [HelmCam] FreeCam=1 (off by default: it stopped the player update, the boat froze); zoom out to 60000 (ship 400..60000)); "
+		"v1.8.74 (the game camera's target is never our hidden carrier: put back on the player (logged), for the spin-outs that came with the carriers' own races); "
+		"v1.8.73 (the helm camera also on the rowboat (drawn the old way it had no boat model, so the game's camera stayed: under you, looking up as you sat)); "
+		"v1.8.72 (the compass stays on the HUD while seated: movement is no longer switched off (that hid it), the walk is held instead); "
+		"v1.8.71 (sitting and standing glide: the body slides onto the seat and turns to face its way over half a second, then sits; standing up rises and steps off over a third of a second, instead of one-frame snaps); "
+		"v1.8.70 (the helm camera spin that lasted until the game was restarted: the game's orbit angle is kept to one turn (it was wound up to thousands of radians, and a number that large made the camera spin and jump)); "
+		"v1.8.69d (the sailing boat comes to its dock spots in any save, also one where it was never out); "
+		"v1.8.69c (the boat's Fishing Supplies and bedroll are persistent (a temporary ref was lost when you travelled and a new one placed, the old one left at the dock); the Fishing Supplies kept disabled except while you fish); "
+		"v1.8.69 (never vanilla: the lake boats' hulls, lanterns and lights, your boat's lantern lights, the lake crew (our own commoners, templated on the game's) and the fishing marker are our own records in OarsAndSails.esl); "
+		"v1.8.68 and earlier: see the briefs in src (one .md per change)";
 	constexpr float kPi = 3.14159265f;
 	constexpr RE::FormID kRowBoatStatic = 0x00050368;  // ShipRowBoat01 (Skyrim.esm), same base OAS reads
+	// v1.8.8: the sailing boat's and the longship's own hulls (their own collision models), activators in OarsAndSails.esl
+	constexpr RE::FormID kSailHullLocal = 0x804;  // OAS_SailBoatHull: RowRim\RowRim_SailBoatHull.nif
+	constexpr RE::FormID kLongHullLocal = 0x805;  // OAS_LongshipHull: RowRim\RowRim_LongshipHull.nif
 	// v0.5.0/v0.5.1: RowRim_Hull.nif raises the hull's own floor to model z 38 (the lake surface is at 32), so where people
 	// stand is 8 higher than on the vanilla collision. The (vanilla) collision is lifted kCollisionLift to match, seats with it.
 	// v1.6.3: 10.5: the floorboards (v1.4.x, top 40.3) are 2.3 above the floor the 8 was set for: feet stood inside them
@@ -181,6 +266,30 @@ namespace
 	RE::NiMatrix3 RzM(float a_h) { const float c = std::cos(a_h), s = std::sin(a_h); return MakeMat(c, s, 0.0f, -s, c, 0.0f, 0.0f, 0.0f, 1.0f); }
 	RE::NiMatrix3 RxM(float a_p) { const float c = std::cos(a_p), s = std::sin(a_p); return MakeMat(1.0f, 0.0f, 0.0f, 0.0f, c, -s, 0.0f, s, c); }
 	RE::NiMatrix3 RyM(float a_r) { const float c = std::cos(a_r), s = std::sin(a_r); return MakeMat(c, 0.0f, s, 0.0f, 1.0f, 0.0f, -s, 0.0f, c); }
+	// v1.8.31: a turn of a_a about the unit axis (a_x, a_y, a_z), anticlockwise looking down the axis (RzM(-a) about z)
+	RE::NiMatrix3 AxisM(float a_x, float a_y, float a_z, float a_a);
+	// v1.8.32: the turn taking a_from onto a_to (both any length), the shortest way
+	RE::NiMatrix3 TurnOnto(const RE::NiPoint3& a_from, const RE::NiPoint3& a_to)
+	{
+		const float lf = a_from.Length(), lt = a_to.Length();
+		if (lf < 1e-6f || lt < 1e-6f) return MakeMat(1, 0, 0, 0, 1, 0, 0, 0, 1);
+		const RE::NiPoint3 f = a_from / lf, t = a_to / lt;
+		RE::NiPoint3 ax{ f.y * t.z - f.z * t.y, f.z * t.x - f.x * t.z, f.x * t.y - f.y * t.x };
+		const float s = ax.Length(), c = f.x * t.x + f.y * t.y + f.z * t.z;
+		if (s < 1e-6f) {
+			if (c > 0.0f) return MakeMat(1, 0, 0, 0, 1, 0, 0, 0, 1);
+			ax = std::abs(f.x) < 0.9f ? RE::NiPoint3{ 0.0f, -f.z, f.y } : RE::NiPoint3{ -f.z, 0.0f, f.x };  // half a turn about any square axis
+			const float l = ax.Length(); return AxisM(ax.x / l, ax.y / l, ax.z / l, 3.14159265f);
+		}
+		return AxisM(ax.x / s, ax.y / s, ax.z / s, std::atan2(s, c));
+	}
+	RE::NiMatrix3 AxisM(float a_x, float a_y, float a_z, float a_a)
+	{
+		const float c = std::cos(a_a), s = std::sin(a_a), k = 1.0f - c;
+		return MakeMat(c + k * a_x * a_x, k * a_x * a_y - s * a_z, k * a_x * a_z + s * a_y,
+			k * a_y * a_x + s * a_z, c + k * a_y * a_y, k * a_y * a_z - s * a_x,
+			k * a_z * a_x - s * a_y, k * a_z * a_y + s * a_x, c + k * a_z * a_z);
+	}
 
 	struct Quat
 	{
@@ -242,6 +351,36 @@ namespace
 		const Quat p{ v.x, v.y, v.z, 0.0f };
 		const Quat r = Mul(Mul(q, p), Conj(q));
 		return { r.x, r.y, r.z };
+	}
+
+	// v1.8.39: a turn part way from a_a to a_b (a_t 0..1), the short way round
+	RE::NiMatrix3 SlerpM(const RE::NiMatrix3& a_a, const RE::NiMatrix3& a_b, float a_t)
+	{
+		const Quat qa = FromMatrix(a_a);
+		Quat qb = FromMatrix(a_b);
+		float d = Dot(qa, qb);
+		if (d < 0.0f) { qb = Quat{ -qb.x, -qb.y, -qb.z, -qb.w }; d = -d; }
+		const float t = std::clamp(a_t, 0.0f, 1.0f);
+		float wa = 1.0f - t, wb = t;
+		if (d < 0.9995f) {
+			const float th = std::acos(std::clamp(d, -1.0f, 1.0f)), sn = std::sin(th);
+			wa = std::sin((1.0f - t) * th) / sn; wb = std::sin(t * th) / sn;
+		}
+		return ToMatrix(Norm(Quat{ qa.x * wa + qb.x * wb, qa.y * wa + qb.y * wb, qa.z * wa + qb.z * wb, qa.w * wa + qb.w * wb }));
+	}
+
+	// v1.8.39b: as SlerpM, but turning at most a_max radians (a heavy thing's slow, steady turn)
+	RE::NiMatrix3 SlerpCapM(const RE::NiMatrix3& a_a, const RE::NiMatrix3& a_b, float a_t, float a_max)
+	{
+		const float d = std::abs(Dot(FromMatrix(a_a), FromMatrix(a_b)));
+		const float ang = 2.0f * std::acos(std::clamp(d, 0.0f, 1.0f));
+		float t = std::clamp(a_t, 0.0f, 1.0f);
+		if (ang * t > a_max && ang > 1e-5f) t = a_max / ang;
+		return SlerpM(a_a, a_b, t);
+	}
+	float TurnBetween(const RE::NiMatrix3& a_a, const RE::NiMatrix3& a_b)
+	{
+		return 2.0f * std::acos(std::clamp(std::abs(Dot(FromMatrix(a_a), FromMatrix(a_b))), 0.0f, 1.0f));
 	}
 
 	void Get4(const RE::hkVector4& a_v, float (&a_out)[4]) { _mm_storeu_ps(a_out, a_v.quad); }
@@ -633,6 +772,9 @@ namespace
 	// OAS row clip events (Nemesis / Pandora, from the Oars and Sails animation files)
 	constexpr const char* kRowStartEvent = "OarsRowStart";
 	constexpr const char* kRowStopEvent = "IdleForceDefaultState";
+	constexpr const char* kHelmStartEvent = "OarsHelmStart";  // v1.8.40: the sailing boat's helm clip (HelmTiller_Loop.hkx), ended as the row clip
+	constexpr const char* kHelmLeftEvent = "OarsHelmLeft";    // v1.8.41: the tiller over to the left (steering right), HelmTiller_Left.hkx
+	constexpr const char* kHelmRightEvent = "OarsHelmRight";  // v1.8.41: the tiller over to the right (steering left), HelmTiller_Right.hkx
 
 	// v1.6.6: a hang watchdog. Each step of our per-frame work names itself (Stage); a thread of ours checks once a second
 	// that the player update still beats, and if it stopped for 3 s writes the last step to the log (the 19:42 freeze
@@ -670,6 +812,7 @@ namespace
 	}
 
 	// v1.5.0: bioluminescent plankton round the player's boat at dusk and night, see src\Plankton_v150.md
+#include "SeaLink.inl"  // v1.8.10: boats ride the OceanRim sea, see src\Sea_v1810_Waves.md
 #include "Plankton.inl"
 #include "Wake.inl"  // v1.5.16: the boat's own V wake, see src\Wake_v1516.md
 #include "Grid.inl"  // v1.7.20: oas "grid on|off", the world cells shown
@@ -679,7 +822,7 @@ namespace
 
 	// v1.6.0: crew and passengers (OAS crew add / boarding / late boarding / numpad seat tuning), see src\Crew_v160.md
 #include "Crew.inl"
-	// v1.7.0: the Fishing Supplies riding in the boat (Creation Club Fishing), see src\Mesh_Clutter.md
+	// v1.7.0: the bedroll riding in the boat (v1.8.80: the fishing supplies are gone), see src\Mesh_Clutter.md
 #include "Gear.inl"
 
 	// Win32 GDI defines GetObject as GetObjectA/GetObjectW. That macro also
@@ -690,14 +833,151 @@ namespace
 
 	// Audio event callbacks can run outside the player update. Publish only an
 	// atomic form ID to them, not the boat's mutable state or scenegraph pointers.
+	// v1.8.28: our own wind for the sails (src\Sail_v1828_OwnWind.md). The game's wind direction is no longer used, and
+	// nothing of the game's wind is ever written: the direction is ours, always wandering (a slow drift, big shifts every
+	// few minutes, gusts that veer it a little); the strength follows whatever weather the game or a weather mod has on
+	// (the sky's wind speed, rain, snow), with gusts and lulls on top. One wind for all the boats.
+	namespace OwnWind
+	{
+		constexpr float kTau = 6.2831853f;
+		struct State
+		{
+			bool init = false;
+			float dir = 0.0f;                       // radians, world: the way it blows toward
+			float drift = 0.0f;                     // rad/s: the slow wander
+			float shiftRate = 0.0f, shiftLeft = 0.0f, nextShift = 45.0f;  // a big shift under way, and the next one
+			float base = 0.4f;                      // from the weather, eased (about 20 s)
+			float gust = 0.0f, gustWant = 0.0f, gustHold = 0.0f, nextGust = 4.0f;
+			float veer = 0.0f, veerWant = 0.0f;     // a gust's own veer
+			float str = 0.4f;                       // what the sails get (0..1)
+			float logT = 0.0f;
+		};
+		inline State g;
+		// v1.8.28b: RowRim.ini [Wind], the Wind page: Strength (x the weather's), Shifts (how far and how often it swings
+		// round; 0 holds its direction), Wander (the slow drift), Gusts (0: a steady wind), HeadWind (the least drive a set
+		// sail gives, even head to wind)
+		struct Settings
+		{
+			bool loaded = false;
+			float strength = 1.0f, shifts = 1.0f, wander = 1.0f, gusts = 1.0f, headWind = 0.35f;
+		};
+		inline Settings g_set;
+		inline float ReadF(const char* a_key, float a_def)
+		{
+			char b[32]{};
+			GetPrivateProfileStringA("Wind", a_key, "", b, sizeof(b), Plankton::IniPath().c_str());
+			try { return b[0] ? std::stof(b) : a_def; } catch (...) { return a_def; }
+		}
+		inline void Load()
+		{
+			if (g_set.loaded) return;
+			g_set.loaded = true;
+			g_set.strength = std::clamp(ReadF("Strength", 1.0f), 0.2f, 2.0f);
+			g_set.shifts = std::clamp(ReadF("Shifts", 1.0f), 0.0f, 3.0f);
+			g_set.wander = std::clamp(ReadF("Wander", 1.0f), 0.0f, 3.0f);
+			g_set.gusts = std::clamp(ReadF("Gusts", 1.0f), 0.0f, 3.0f);
+			g_set.headWind = std::clamp(ReadF("HeadWind", 0.35f), 0.0f, 0.8f);
+			logger::info("Wind: strength {:.2f}, shifts {:.2f}, wander {:.2f}, gusts {:.2f}, head wind drive {:.2f} (RowRim.ini [Wind])", g_set.strength, g_set.shifts, g_set.wander, g_set.gusts, g_set.headWind);
+		}
+		inline void Save(const char* a_key, float a_v)
+		{
+			WritePrivateProfileStringA("Wind", a_key, std::format("{:.2f}", a_v).c_str(), Plankton::IniPath().c_str());
+		}
+		inline void ShiftNow()  // the Wind page's button: a big shift starts now
+		{
+			g.nextShift = 0.0f;
+			g.shiftLeft = 0.0f;
+		}
+		inline std::mt19937& Rng()
+		{
+			static std::mt19937 r{ std::random_device{}() };
+			return r;
+		}
+		inline float Dir() { return g.dir + g.veer; }
+		inline float Str() { return g.str; }
+		inline float U(float a_lo, float a_hi) { return std::uniform_real_distribution<float>(a_lo, a_hi)(Rng()); }
+		inline float WeatherBase()
+		{
+			auto* sky = RE::Sky::GetSingleton();
+			if (!sky) return 0.4f;
+			float b = 0.18f + 0.62f * std::clamp(sky->windSpeed, 0.0f, 1.0f);  // a still day still sails, a gale near full
+			if (auto* wt = sky->currentWeather) {
+				const auto f = wt->data.flags;
+				if (f.any(RE::TESWeather::WeatherDataFlag::kRainy)) b += 0.12f;
+				if (f.any(RE::TESWeather::WeatherDataFlag::kSnow)) b += 0.08f;
+				if (f.any(RE::TESWeather::WeatherDataFlag::kPleasant)) b -= 0.04f;
+			}
+			return std::clamp(b, 0.12f, 1.0f);
+		}
+		inline void Tick(float a_dt)
+		{
+			Load();
+			a_dt = std::clamp(a_dt, 0.0f, 0.25f);
+			if (!g.init) {
+				g.init = true;
+				g.dir = U(0.0f, kTau);
+				g.base = WeatherBase();
+				g.nextShift = U(40.0f, 120.0f);
+			}
+			// the strength: the weather's, eased, so a change of weather freshens or dies away over half a minute
+			g.base += (WeatherBase() - g.base) * (1.0f - std::exp(-a_dt / 20.0f));
+			const float wild = 0.6f + g.base;  // rougher weather: more and stronger gusts, shifts sooner
+			// the slow wander: up to about 2 deg/s, mostly well under
+			g.drift += -0.12f * g.drift * a_dt + U(-1.0f, 1.0f) * 0.02f * g_set.wander * std::sqrt(a_dt);
+			g.drift = std::clamp(g.drift, -0.035f * g_set.wander, 0.035f * g_set.wander);
+			g.dir += g.drift * a_dt;
+			// a big shift every 1.5 to 4 minutes: 30 to 120 deg either way, over 20 to 45 s
+			if (g.shiftLeft > 0.0f) {
+				const float st = (std::min)(a_dt, g.shiftLeft);
+				g.dir += g.shiftRate * st;
+				g.shiftLeft -= st;
+			} else if (g_set.shifts > 0.0f && (g.nextShift -= a_dt * wild * g_set.shifts) <= 0.0f) {
+				const float by = (U(0.0f, 1.0f) < 0.5f ? -1.0f : 1.0f) * (std::min)(U(0.52f, 2.1f) * (std::min)(g_set.shifts, 1.5f), kTau * 0.5f);
+				g.shiftLeft = U(20.0f, 45.0f);
+				g.shiftRate = by / g.shiftLeft;
+				g.nextShift = U(90.0f, 240.0f);
+				logger::info("Wind: shifting {:.0f} deg over {:.0f} s", by * 57.2958f, g.shiftLeft);
+			}
+			g.dir = std::fmod(g.dir, kTau);
+			if (g.dir < 0.0f) g.dir += kTau;
+			// gusts and lulls: a gust every 4 to 14 s (sooner in rough weather), held 1.5 to 5 s, veering up to 12 deg
+			if ((g.gustHold -= a_dt) <= 0.0f) { g.gustWant = 0.0f; g.veerWant = 0.0f; }
+			if (g_set.gusts > 0.0f && (g.nextGust -= a_dt * g_set.gusts) <= 0.0f) {
+				const bool lull = U(0.0f, 1.0f) < 0.25f;
+				g.gustWant = (lull ? -U(0.05f, 0.15f) : U(0.08f, 0.3f) * wild) * (std::min)(g_set.gusts, 2.0f);
+				g.veerWant = U(-0.21f, 0.21f) * (std::min)(g_set.gusts, 2.0f);
+				g.gustHold = U(1.5f, 5.0f);
+				g.nextGust = U(4.0f, 14.0f) / wild;
+			}
+			const float up = g.gustWant > g.gust ? 1.2f : 0.4f;  // gusts come quickly, die away slowly
+			g.gust += (g.gustWant - g.gust) * (1.0f - std::exp(-up * a_dt));
+			g.veer += (g.veerWant - g.veer) * (1.0f - std::exp(-0.6f * a_dt));
+			if (g_set.gusts <= 0.0f) { g.gustWant = g.veerWant = 0.0f; }
+			g.str = std::clamp((g.base + g.gust) * g_set.strength, 0.05f, 1.0f);
+			if ((g.logT -= a_dt) <= 0.0f) {
+				g.logT = 15.0f;
+				logger::info("Wind: toward {:.0f} deg, strength {:.2f} (weather {:.2f}, gust {:+.2f}), drift {:+.1f} deg/s{}", Dir() * 57.2958f, g.str, g.base, g.gust,
+					g.drift * 57.2958f, g.shiftLeft > 0.0f ? ", shifting" : "");
+			}
+		}
+	}
+#include "WindStreaks.inl"  // v1.8.39: wind streaks in the air while aboard, see src\Wind_v1839_Streaks.md
+
 	namespace CarrierAudio
 	{
-		inline std::atomic<RE::FormID> id{ 0 };
+		inline std::atomic<RE::FormID> ids[3]{};  // v1.8.26: each boat's own carrier
 		inline std::atomic<unsigned> footstepsLogged{ 0 }, animationsLogged{ 0 };
+		inline bool Any()
+		{
+			for (auto& i : ids) if (i.load(std::memory_order_relaxed)) return true;
+			return false;
+		}
 		inline bool IsCarrier(const RE::TESObjectREFR* a_ref)
 		{
-			const auto silent = id.load(std::memory_order_relaxed);
-			return silent && a_ref && a_ref->GetFormID() == silent;
+			if (!a_ref) return false;
+			const auto f = a_ref->GetFormID();
+			for (auto& i : ids) { const auto silent = i.load(std::memory_order_relaxed); if (silent && f == silent) return true; }
+			return false;
 		}
 		inline bool SoundPlayTag(std::string_view a_tag)
 		{
@@ -711,106 +991,6 @@ namespace
 		}
 	}
 
-	// Boat-only fishing gate. Read CC state; never overwrite a running Papyrus
-	// stack's state/controls or delete its rod. All changes live in this .cpp.
-	namespace BoatFishing
-	{
-		struct Status
-		{
-			int state = -1;
-			bool handling = false;
-			bool ours = false;
-			RE::VMHandle reel = 0;
-			RE::BSTSmartPointer<RE::BSScript::Object> system;
-		};
-		inline float startHold = 0.0f;
-		inline bool quitAfterMenu = false;
-		inline bool watchAttempt = false, sawActiveAttempt = false;
-		inline RE::VMHandle Handle(RE::TESForm* a_form)
-		{
-			auto* vm = RE::BSScript::Internal::VirtualMachine::GetSingleton();
-			auto* policy = vm ? vm->GetObjectHandlePolicy() : nullptr;
-			return policy && a_form ? policy->GetHandleForObject(a_form->GetFormType(), a_form) : 0;
-		}
-		inline Status Read()
-		{
-			Status s;
-			auto supplies = Gear::g_items[Gear::kSupplies].ref.get();
-			auto* vm = RE::BSScript::Internal::VirtualMachine::GetSingleton();
-			if (!supplies || !vm) return s;
-			const auto h = Handle(supplies.get());
-			RE::BSTSmartPointer<RE::BSScript::Object> act;
-			if (!h || !vm->FindBoundObject(h, "ccBGSSSE001_FishingActScript", act) || !act) return s;
-			auto* p = act->GetProperty("FishingSystem");
-			auto sys = p && p->IsObject() ? p->GetObject() : RE::BSTSmartPointer<RE::BSScript::Object>{};
-			if (!sys) return s;
-			s.system = sys;
-			if (auto* v = sys->GetVariable("currentSystemState"); v && v->IsInt()) s.state = v->GetSInt();
-			if (auto* v = sys->GetVariable("handlingInputOrUpdate"); v && v->IsBool()) s.handling = v->GetBool();
-			if (auto* v = sys->GetVariable("currentFishingSupplies"); v && v->IsObject()) {
-				auto owner = v->GetObject();
-				s.ours = owner && owner->GetHandle() == h;
-			}
-			if (auto* v = sys->GetProperty("ReelLineRef"); v && v->IsObject()) {
-				auto reel = v->GetObject();
-				if (reel) s.reel = reel->GetHandle();
-			}
-			return s;
-		}
-		inline bool IsBoatReel(RE::TESObjectREFR* a_ref, const Status& a_s)
-		{
-			return a_ref && a_s.ours && a_s.reel && Handle(a_ref) == a_s.reel;
-		}
-		inline bool CanReel(const Status& a_s)
-		{
-			// CC: fishing=2, nibble=3, hooked=4. Setup/resolve/cleanup
-			// must not accept another E or show a stale continuation prompt.
-			return !a_s.handling && a_s.state >= 2 && a_s.state <= 4;
-		}
-		inline bool Idle(const Status& a_s) { return a_s.state == 0 && !a_s.handling; }
-		inline void TendFinishedAttempt()
-		{
-			if (!watchAttempt) return;
-			auto* ui = RE::UI::GetSingleton();
-			if (ui && ui->GameIsPaused()) return;
-			auto s = Read();
-			if (!s.ours) return;
-			if (s.state > 0) sawActiveAttempt = true;
-			if (!Idle(s) || (!sawActiveAttempt && startHold > 0.0f)) return;
-			// Normal CC catch cleanup leaves its large continuation triggers
-			// on the fisher. Finish that session through CC's idle cleanup:
-			// return the volumes, followers and weather, without touching loot.
-			auto* vm = RE::BSScript::Internal::VirtualMachine::GetSingleton();
-			if (vm && s.system) {
-				RE::BSTSmartPointer<RE::BSScript::IStackCallbackFunctor> callback;
-				if (vm->DispatchMethodCall(s.system, "DoCleanupTasks", RE::MakeFunctionArguments(), callback)) {
-					watchAttempt = false;
-					startHold = (std::max)(startHold, 1.0f);
-					logger::info("Fish: attempt finished; CC continuation volumes returned, look down to fish again");
-				}
-			}
-		}
-		inline void TendMenuExit()
-		{
-			if (!quitAfterMenu) return;
-			auto* ui = RE::UI::GetSingleton();
-			if (ui && (ui->GameIsPaused() || ui->IsMenuOpen(RE::StatsMenu::MENU_NAME) || ui->IsMenuOpen(RE::LevelUpMenu::MENU_NAME))) return;
-			auto s = Read();
-			if (!s.ours || Idle(s)) { quitAfterMenu = false; return; }
-			if (s.handling || s.state == 5 || s.state == 6) return;
-			// Let CC perform its own normal exit after a skills/level-up menu.
-			// Do not force controls or set its state while a result is resolving.
-			auto* vm = RE::BSScript::Internal::VirtualMachine::GetSingleton();
-			if (vm && s.system) {
-				RE::BSTSmartPointer<RE::BSScript::IStackCallbackFunctor> callback;
-				if (vm->DispatchMethodCall(s.system, "DoCleanupTasks", RE::MakeFunctionArguments(), callback)) {
-					quitAfterMenu = false;
-					startHold = 2.0f;
-					logger::info("Fish: requested CC's normal exit after the skills/level-up menu");
-				}
-			}
-		}
-	}
 	// v1.7.8: old Oars and Sails boats in saves made with OAS 1.0.x, see src\Release_v178_OAS.md
 #include "Legacy.inl"
 
@@ -867,6 +1047,14 @@ namespace
 			const std::uint32_t k = cm->GetMappedKey(std::string_view{ ue->autoMove.c_str() }, a_dev);
 			return k != 0xFF && k != 0xFFFFFFFF && a_id == k;
 		}
+		// v1.7.74: any game control's key or button on that device, read live (rebinds followed)
+		inline bool IsMappedTo(const RE::BSFixedString& a_event, RE::INPUT_DEVICE a_dev, std::uint32_t a_id)
+		{
+			auto* cm = RE::ControlMap::GetSingleton();
+			if (!cm || !a_event.c_str()) return false;
+			const std::uint32_t k = cm->GetMappedKey(std::string_view{ a_event.c_str() }, a_dev);
+			return k != 0xFF && k != 0xFFFFFFFF && a_id == k;
+		}
 		// R3 held and the left stick pushed: zooming, not rowing
 		inline bool R3Zooming() { return g_zoomOn && g_r3 && std::abs(g_leftY) > 0.2f; }
 		inline void Reset() { g_l3 = g_r3 = false; g_leftY = g_rightY = 0.0f; g_zoomedR3 = false; g_undo = 0.0f; }
@@ -909,14 +1097,423 @@ namespace
 	enum class Mode { kDrive, kWarp, kFrozen };
 	const char* ModeName(Mode m) { return m == Mode::kDrive ? "drive" : m == Mode::kWarp ? "warp" : "frozen"; }
 
+	// v1.8.61: SmoothCam's API (its SmoothCamAPI.h, the parts used): while our helm camera is on, SmoothCam is asked to
+	// hand the camera over (it otherwise places the camera itself after the game, over ours); given back as you stand.
+	namespace SmoothCamLink
+	{
+		enum class Ver : std::uint8_t { V1, V2, V3 };
+		enum class Res : std::uint8_t { OK, NotOwner, MustKeep, AlreadyGiven, AlreadyTaken, BadThread };
+		class IV1
+		{
+		public:
+			[[nodiscard]] virtual unsigned long GetSmoothCamThreadId() const noexcept = 0;
+			[[nodiscard]] virtual Res RequestCameraControl(SKSE::PluginHandle a_h) noexcept = 0;
+			[[nodiscard]] virtual Res RequestCrosshairControl(SKSE::PluginHandle a_h, bool a_restore = true) noexcept = 0;
+			[[nodiscard]] virtual Res RequestStealthMeterControl(SKSE::PluginHandle a_h, bool a_restore = true) noexcept = 0;
+			virtual SKSE::PluginHandle GetCameraOwner() const noexcept = 0;
+			virtual SKSE::PluginHandle GetCrosshairOwner() const noexcept = 0;
+			virtual SKSE::PluginHandle GetStealthMeterOwner() const noexcept = 0;
+			virtual Res ReleaseCameraControl(SKSE::PluginHandle a_h) noexcept = 0;
+			virtual Res ReleaseCrosshairControl(SKSE::PluginHandle a_h) noexcept = 0;
+			virtual Res ReleaseStealthMeterControl(SKSE::PluginHandle a_h) noexcept = 0;
+		};
+		class IV2 : public IV1
+		{
+		public:
+			virtual RE::NiPoint3 GetLastCameraPosition() const noexcept = 0;
+			virtual Res RequestInterpolatorUpdates(SKSE::PluginHandle a_h, bool a_allow) noexcept = 0;
+			virtual Res SendToGoalPosition(SKSE::PluginHandle a_h, bool a_should, bool a_now = false, const RE::Actor* a_ref = nullptr) noexcept = 0;
+		};
+		struct Command { std::uint32_t header = 0x9007CA50; std::uint8_t type = 0; void* data = nullptr; };
+		struct Request { Ver version; };
+		struct Response { std::uint8_t type; void* data = nullptr; };
+		struct Container { void* instance = nullptr; Ver version; };
+		inline IV1* g_api = nullptr;
+		inline Ver g_ver = Ver::V1;
+		inline bool g_held = false;
+		inline void OnMsg(SKSE::MessagingInterface::Message* a_msg)
+		{
+			if (!a_msg || a_msg->type != 0 || a_msg->dataLen != sizeof(Response) || !a_msg->data) return;
+			const auto* r = static_cast<Response*>(a_msg->data);
+			if (r->type == 1 && r->data) {
+				const auto* c = static_cast<Container*>(r->data);
+				g_api = static_cast<IV1*>(c->instance);
+				g_ver = c->version;
+				logger::info("Compat: SmoothCam API v{} (the helm camera asks it for the camera while seated)", static_cast<int>(c->version) + 1);
+			} else {
+				logger::info("Compat: SmoothCam API error");
+			}
+		}
+		inline void Ask()
+		{
+			if (!GetModuleHandleA("SmoothCam.dll")) return;
+			static Request req{ Ver::V3 };
+			static Command cmd{};
+			cmd.data = &req;
+			const bool ok = SKSE::GetMessagingInterface()->Dispatch(0, &cmd, sizeof(Command), "SmoothCam");
+			logger::info("Compat: SmoothCam API asked for ({})", ok ? "sent" : "nobody listening");
+		}
+		inline void Take()
+		{
+			if (!g_api || g_held) return;
+			const auto r = g_api->RequestCameraControl(SKSE::GetPluginHandle());
+			g_held = r == Res::OK || r == Res::AlreadyGiven;
+			logger::info("Helm camera: SmoothCam {} ({})", g_held ? "handed us the camera" : "kept the camera", static_cast<int>(r));
+		}
+		inline void Give()
+		{
+			if (!g_api || !g_held) return;
+			if (g_ver >= Ver::V2) static_cast<IV2*>(g_api)->SendToGoalPosition(SKSE::GetPluginHandle(), true, true);
+			g_api->ReleaseCameraControl(SKSE::GetPluginHandle());
+			g_held = false;
+			logger::info("Helm camera: camera given back to SmoothCam");
+		}
+	}
+
+	// v1.8.59: the helm camera's settings (RowRim.ini [HelmCam]), edited live on the menu's Helm camera page
+	namespace HelmCamSet
+	{
+		struct Cfg
+		{
+			bool on{ true }, invertY{ false }, cine{ false }, recenter{ true };
+			bool helmPoses{ true };     // v1.8.65: [Helm] Poses: the tiller poses (left / right clips) at the helm
+			bool calmGraph{ true };     // v1.8.65: [Helm] CalmGraph: seated, the body's movement values held at rest (CBE and other behaviour overhauls)
+			int rideMode{ 1 };          // v1.8.64: [Carrier] RideMode: 0 the boat model on the carrier only, 1 on the carrier and on you only while the carrier blinks out (default), 2 always on you (v1.8.57)
+			float sens{ 0.35f };        // mouse
+			float smooth{ 0.18f };      // s: the orbit eases to where the mouse put it (PlayStation feel); 0 = instant
+			float follow{ 0.10f };      // s: the camera trails the boat this much; 0 = locked on
+			float minDist{ 250.0f }, maxDist{ 12000.0f };  // zoomed in .. out (scroll)
+			float height{ 140.0f };     // the point above the boat it looks at
+			float pitchMin{ -20.0f }, pitchMax{ 70.0f };  // deg
+			float recenterDelay{ 3.0f }, recenterSpeed{ 0.6f };  // s idle, then swings back behind her
+			float shotLen{ 8.0f };      // s per cinematic shot
+			float deadzone{ 0.004f };   // v1.8.62: look input smaller than this is ignored
+			int cineKey{ 0x2F };        // V
+			float mouseScale{ 0.02f };  // v1.8.79: [HelmCam] MouseScale: raw mouse counts -> orbit
+		};
+		inline Cfg g;
+		inline bool loaded = false;
+		inline void Load()
+		{
+			loaded = true;
+			const auto ini = Plankton::IniPath();
+			auto f = [&](const char* k, float d, float lo, float hi) {
+				char b[32]{};
+				GetPrivateProfileStringA("HelmCam", k, "", b, sizeof(b), ini.c_str());
+				float v = d;
+				try { if (b[0]) v = std::stof(b); } catch (...) {}
+				return std::clamp(v, lo, hi);
+			};
+			auto i = [&](const char* k, int d) { return GetPrivateProfileIntA("HelmCam", k, d, ini.c_str()); };
+			g.on = i("On", 1) != 0;
+			g.helmPoses = GetPrivateProfileIntA("Helm", "Poses", 1, ini.c_str()) != 0;
+			g.calmGraph = GetPrivateProfileIntA("Helm", "CalmGraph", 1, ini.c_str()) != 0;
+			g.rideMode = std::clamp(static_cast<int>(GetPrivateProfileIntA("Carrier", "RideMode", 1, ini.c_str())), 0, 2);
+			g.invertY = i("InvertY", 0) != 0;
+			g.recenter = i("Recenter", 1) != 0;
+			g.cine = i("Cinematic", 0) != 0;
+			g.cineKey = i("CinematicKey", 0x2F);
+			g.sens = f("Sens", 0.35f, 0.02f, 3.0f);
+			g.smooth = f("Smooth", 0.18f, 0.0f, 1.5f);
+			g.follow = f("Follow", 0.10f, 0.0f, 1.0f);
+			g.minDist = f("MinDist", 250.0f, 50.0f, 2000.0f);
+			g.maxDist = f("MaxDist", 12000.0f, 300.0f, 60000.0f);
+			g.mouseScale = f("MouseScale", 0.02f, 0.001f, 0.5f);
+			g.height = f("Height", 140.0f, -200.0f, 1000.0f);
+			g.pitchMin = f("PitchMin", -20.0f, -80.0f, 0.0f);
+			g.pitchMax = f("PitchMax", 70.0f, 0.0f, 89.0f);
+			g.recenterDelay = f("RecenterDelay", 3.0f, 0.5f, 30.0f);
+			g.recenterSpeed = f("RecenterSpeed", 0.6f, 0.05f, 5.0f);
+			g.shotLen = f("ShotLength", 8.0f, 2.0f, 60.0f);
+			g.deadzone = f("DeadZone", 0.004f, 0.0f, 0.2f);
+			logger::info("Helm camera: {} | mouse x{:.2f}, smooth {:.2f} s, follow {:.2f} s, distance {:.0f}..{:.0f}, cinematic key {:X} (RowRim.ini [HelmCam])",
+				g.on ? "ours" : "off (the game's)", g.sens, g.smooth, g.follow, g.minDist, g.maxDist, g.cineKey);
+		}
+		inline const Cfg& Get()
+		{
+			if (!loaded) Load();
+			return g;
+		}
+		inline void Save()
+		{
+			const auto ini = Plankton::IniPath();
+			auto w = [&](const char* k, const std::string& v) { WritePrivateProfileStringA("HelmCam", k, v.c_str(), ini.c_str()); };
+			auto wf = [&](const char* k, float v) { w(k, std::format("{:.2f}", v)); };
+			w("On", g.on ? "1" : "0");
+			w("MouseScale", std::format("{:.3f}", g.mouseScale));
+			WritePrivateProfileStringA("Helm", "Poses", g.helmPoses ? "1" : "0", ini.c_str());
+			WritePrivateProfileStringA("Helm", "CalmGraph", g.calmGraph ? "1" : "0", ini.c_str());
+			WritePrivateProfileStringA("Carrier", "RideMode", std::to_string(g.rideMode).c_str(), ini.c_str());
+			w("InvertY", g.invertY ? "1" : "0");
+			w("Recenter", g.recenter ? "1" : "0");
+			w("Cinematic", g.cine ? "1" : "0");
+			w("CinematicKey", std::to_string(g.cineKey));
+			wf("Sens", g.sens); wf("Smooth", g.smooth); wf("Follow", g.follow);
+			wf("MinDist", g.minDist); wf("MaxDist", g.maxDist); wf("Height", g.height);
+			wf("PitchMin", g.pitchMin); wf("PitchMax", g.pitchMax);
+			wf("RecenterDelay", g.recenterDelay); wf("RecenterSpeed", g.recenterSpeed); wf("ShotLength", g.shotLen);
+			w("DeadZone", std::format("{:.3f}", g.deadzone));
+		}
+		inline void ToggleCine()
+		{
+			Get();
+			g.cine = !g.cine;
+			RE::SendHUDMessage::ShowHUDMessage(g.cine ? "Cinematic camera" : "Helm camera");
+			logger::info("Helm camera: cinematic {}", g.cine ? "on" : "off");
+		}
+	}
+
+
 	class TestHull
 	{
 	public:
+		// v1.8.26: the three boats are each their own, all three can be out at once: Of(kind) is that boat, Get() the one
+		// in use (seated in, aboard, or the nearest to you, see TickAll). src\Boats_v1826_ThreeBoats.md
+		static TestHull& Of(int a_k)
+		{
+			static TestHull s[kKindCount];
+			static bool named = false;
+			if (!named) {
+				named = true;
+				for (int i = 0; i < kKindCount; ++i) s[i].kind_ = i;
+				s[kKindSail].heightOff_ = kSailHeight;  // v1.8.27c
+			}
+			return s[std::clamp(a_k, 0, kKindCount - 1)];
+		}
+		static inline int s_active = -1;
+		static inline float s_holdT = 0.0f;  // v1.8.89: after Spawn boat / Use this boat the auto-switch ("you are by it") leaves the chosen boat alone for a while
+		static void HoldActive() { s_holdT = 60.0f; }
 		static TestHull& Get()
 		{
-			static TestHull s;
-			return s;
+			if (s_active < 0) {
+				s_active = SailEnabled() ? IniKind() : 0;
+				RowRimBakedIni::g_iniKind = s_active;
+			}
+			return Of(s_active);
 		}
+		static int Active() { Get(); return s_active; }
+		bool IsActive() const { return this == &Get(); }
+		// the boat you use: the one you sit in, else the one you stand aboard, else the nearest one out within 1500 of you
+		// (from its hull's ends), else the last one. Every boat out runs its own frame (waves, drift, its sail, its model);
+		// only the one in use does what is yours (seats, prompts, crew, the camera, wake ripples, the Sea page readout).
+		// v1.8.66: the whole save, once a few seconds after each load, silently (log only): every game-made (FF) carrier
+		// (our own or an old version's mannequin) and every game-made boat hull (vanilla ShipRowBoat01, our rowboat,
+		// sailing boat and longship hulls) that is none of the boats out now and none of the lake boats' is disabled and
+		// deleted, wherever it is (a docked stray far away, a mannequin left in a house). Plugin-placed mannequins and
+		// rowboats (player homes, docks) are never FF refs and are never touched.
+		static inline float s_saveSweepIn = -1.0f;
+		static void SweepSaveStrays()
+		{
+			std::unordered_set<RE::FormID> keep;
+			for (int k = 0; k < kKindCount; ++k) {
+				if (Of(k).refId_) keep.insert(Of(k).refId_);
+				if (Of(k).carrierId_) keep.insert(Of(k).carrierId_);
+			}
+			auto* dh = RE::TESDataHandler::GetSingleton();
+			const RE::TESForm* hullBases[4] = {
+				RE::TESForm::LookupByID(kRowBoatStatic),
+				dh ? dh->LookupForm(kOwnRowHullLocal, "OarsAndSails.esl") : nullptr,
+				dh ? dh->LookupForm(kSailHullLocal, "OarsAndSails.esl") : nullptr,
+				dh ? dh->LookupForm(kLongHullLocal, "OarsAndSails.esl") : nullptr,
+			};
+			std::vector<RE::TESObjectREFR*> gone;
+			int carriers = 0, hulls = 0, gear = 0;
+			{
+				auto [map, lock] = RE::TESForm::GetAllForms();
+				if (!map) return;
+				RE::BSReadLockGuard guard{ lock.get() };
+				for (auto& [id, form] : *map) {
+					if (!form || (id >> 24) != 0xFF || keep.contains(id)) continue;
+					auto* ref = form->AsReference();
+					if (!ref || ref->IsDeleted()) continue;
+					auto* base = ref->GetBaseObject();
+					if (!base) continue;
+					if (auto* npc = base->As<RE::TESNPC>(); npc && IsCarrierBase(npc)) {
+						gone.push_back(ref);
+						++carriers;
+						continue;
+					}
+					bool hull = false;
+					for (auto* hb : hullBases) if (hb && base == hb) hull = true;
+					if (hull && !LakeBoats::IsOurs(id)) {
+						gone.push_back(ref);
+						++hulls;
+						continue;
+					}
+					// v1.8.68: Fishing Supplies, bedrolls and fishing markers of ours left at old boat spots
+					if (Gear::IsGearBase(base) && !Gear::IsHeldGear(id) && !LakeBoats::IsOurs(id)) {
+						gone.push_back(ref);
+						++gear;
+					}
+				}
+			}
+			for (auto* r : gone) {
+				auto* c = r->GetParentCell();
+				logger::info("Strays: {:08X} ({}) removed{}", r->GetFormID(), r->As<RE::Actor>() ? "a carrier" : Gear::IsGearBase(r->GetBaseObject()) ? "boat gear" : "a boat hull",
+					c ? std::format(" from {} {:08X}", c->IsExteriorCell() ? "exterior" : "interior", c->GetFormID()) : std::string{});
+				if (auto* a = r->As<RE::Actor>()) LakeBoats::DeleteActorLater(a);
+				else {
+					r->Disable();
+					r->SetDelete(true);
+				}
+			}
+			logger::info("Strays: save swept: {} stray carrier(s), {} stray hull(s), {} stray piece(s) of gear removed ({} kept as the boats out)", carriers, hulls, gear, keep.size());
+		}
+		static void TickAll(float a_dt)
+		{
+			if (s_saveSweepIn > 0.0f && (s_saveSweepIn -= a_dt) <= 0.0f) SweepSaveStrays();  // v1.8.66
+			OwnWind::Tick(a_dt);  // v1.8.28: our own wind, once a frame
+			if (!SailEnabled()) {
+				if (Active() != kKindRow) SwitchActive(kKindRow, "sailing is off");
+				Of(kKindRow).Update(a_dt);
+				return;
+			}
+			if (!kLongshipOn) {  // v1.8.53: no longship in this build
+				if (Active() == kKindLong) SwitchActive(kKindRow, "the longship is not in this build");
+				static RE::FormID s_gone = 0;
+				auto& ls = Of(kKindLong);
+				if (ls.refId_ && ls.refId_ != s_gone) {
+					s_gone = ls.refId_;
+					logger::info("Boat: a longship {:08X} from the save removed (not in this build)", ls.refId_);
+					ls.Delete(false);
+				}
+			}
+			int want = -1;
+			for (int k = 0; k < kKindCount && want < 0; ++k) if (Of(k).seated_) want = k;
+			if (s_holdT > 0.0f) { s_holdT -= a_dt; if (want >= 0) s_holdT = 0.0f; }  // v1.8.89: sat in a boat: the hold is over
+			// the boat in use first: you stay on it while you are aboard it (v1.8.29b)
+			if (want < 0 && Get().havePose_ && Get().HaveBoat() && Get().PlayerAboard()) want = Active();
+			for (int k = 0; k < kKindCount && want < 0; ++k) if (Of(k).havePose_ && Of(k).HaveBoat() && Of(k).PlayerAboard()) want = k;
+			if (want < 0) {
+				if (auto* player = RE::PlayerCharacter::GetSingleton()) {
+					const auto p = player->GetPosition();
+					float best = 1500.0f;
+					for (int k = 0; k < kKindCount; ++k) {
+						auto& h = Of(k);
+						if (!h.havePose_ || !h.HaveBoat()) continue;
+						const float d = std::hypot(p.x - h.pos_.x, p.y - h.pos_.y) - h.Dims().feelLen;
+						if (d < best) { best = d; want = k; }
+					}
+				}
+			}
+			if (s_holdT <= 0.0f && want >= 0 && want != Active() && !Get().seated_) SwitchActive(want, Of(want).seated_ ? "seated" : "you are by it");
+			const int act = Active();
+			Of(act).Update(a_dt);
+			for (int k = 0; k < kKindCount; ++k) {
+				if (k == act || (!kLongshipOn && k == kKindLong)) continue;
+				auto& h = Of(k);
+				if (h.refId_ || k == kKindRow || (k == kKindSail && SailEnabled())) h.Update(a_dt);  // the rowboat (v1.8.87: and the sailing boat) every frame for its docks
+				else h.TendHome(a_dt);  // v1.8.69d: a boat not out in this save (a new save) still comes to its own dock spots
+			}
+			{
+				auto& b = Get();  // v1.8.39: the wind streaks round you while you are aboard the boat in use
+				WindStreaks::Tick(a_dt, b.haveWater_ && b.OnBoat(), b.waterZ_);
+			}
+			for (int k = 0; k < kKindCount; ++k) Of(k).GuardRide(k == Active());  // v1.8.57
+		}
+		static void SwitchActive(int a_k, const char* a_why)
+		{
+			a_k = std::clamp(a_k, 0, kKindCount - 1);
+			if (a_k == Active()) return;
+			auto& from = Get();
+			if (from.seated_) from.StandUp("changing boats");
+			if (Crew::Lingering()) Crew::StandAll(Crew::g.pose);
+			from.DropPicks();
+			from.UntameAll("changing boats");
+			if (from.footIkOff_) {
+				if (auto* player = RE::PlayerCharacter::GetSingleton()) player->SetGraphVariableBool("bHumanoidFootIKDisable", false);
+				from.footIkOff_ = false;
+			}
+			s_active = a_k;
+			RowRimBakedIni::g_iniKind = a_k;  // its own [Wake] and [CrewSeats] (RowRim.ini [SailBoat.Wake] ...)
+			Wake::g_stern = Wake::Stern{};
+			Wake::g_hull = Wake::Hull{};
+			Crew::ReloadTunes();
+			s_boardPickKind = -1;
+			logger::info("Boat: using the {} now ({})", DimsOf(a_k).label, a_why);
+		}
+		static bool IsAnyCarrier(RE::FormID a_id)
+		{
+			if (!a_id) return false;
+			for (int k = 0; k < kKindCount; ++k) if (Of(k).CarrierId() == a_id) return true;
+			return false;
+		}
+		static bool IsOursAny(RE::FormID a_id)
+		{
+			if (!a_id) return false;
+			for (int k = 0; k < kKindCount; ++k) {
+				const auto& h = Of(k);
+				if (a_id == h.refId_ || a_id == h.carrierId_ || h.IsPickRef(a_id) || a_id == h.LampLightId()) return true;
+			}
+			return false;
+		}
+
+		// ---- v1.8.8: the boats. Each its own: hull (and collision), model, seats, size and settings ----
+		enum BoatKind : int { kKindRow = 0, kKindSail = 1, kKindLong = 2, kKindCount = 3 };
+		// v1.8.53: the longship is out of this release (its code stays in the source, off: no boat, page, dock or command;
+		// its meshes and textures are not packed). A longship left out in a save is removed on load.
+		static constexpr bool kLongshipOn = false;
+		// v1.8.27: the sailing boat drawn a quarter bigger (its collision nif is built at this size: hull_collision.py sail 1.25).
+		// Everything placed on it in code (seats, prompts, crew, its size and waterline) is in world units, scaled to match.
+		static constexpr float kSailScale = 1.25f;
+		static constexpr float kSailHeight = -10.0f;  // v1.8.27c: Miguel's height for the sailing boat (its floorboards 8 higher in the model to match)
+		float ModelScale() const { return Kind() == kKindSail ? kSailScale : 1.0f; }
+		float WaterZ() const { return kWaterZ * ModelScale(); }  // the origin under the water: a bigger boat draws deeper
+		struct BoatDims
+		{
+			const char* name;       // oas boat <name>, RowRim.ini [Boat] Kind
+			const char* label;
+			const char* rowSec;     // RowRim.ini: speed, glide, turning
+			const char* sailSec;    // sail speed and flapping
+			float feelLen, feelWidth;            // the shore / rock feelers: half length and half beam
+			float aboardX, aboardYlo, aboardYhi, aboardZhi;  // "on the boat" (model space)
+			float deckZ;                         // standing height on the deck (model z)
+			float weightHalfLen, weightHalfWide; // where standing people tip the boat
+			float rock;                          // v1.8.8b: how much it rolls and pitches (a longship hardly answers a step)
+			float aboardZlo;                     // v1.8.8b: "on the boat" only this high (swimming beside it is not aboard)
+		};
+		static const BoatDims& DimsOf(int a_k)
+		{
+			static const BoatDims k[kKindCount] = {
+				{ "row", "Rowboat", "Row", "RowSail", 300.0f, 85.0f, 120.0f, -450.0f, 320.0f, 150.0f, kDeckZ, 230.0f, 85.0f, 1.0f, -30.0f },
+				// v1.8.27: a quarter bigger (kSailScale), its standing height on the new floorboards (z 41 in the model; v1.8.27c: 49)
+				{ "sail", "Sailing boat", "SailBoat", "Sail", 300.0f * kSailScale, 100.0f * kSailScale, 105.0f * kSailScale, -300.0f * kSailScale, 300.0f * kSailScale,
+					170.0f * kSailScale, 49.0f * kSailScale, 250.0f * kSailScale, 95.0f * kSailScale, 0.7f, 10.0f * kSailScale },
+				{ "longship", "Longship", "Longship", "LongshipSail", 1080.0f, 262.0f, 255.0f, -1080.0f, 1080.0f, 230.0f, 48.0f, 900.0f, 250.0f, 0.15f, 25.0f },
+			};
+			return k[std::clamp(a_k, 0, kKindCount - 1)];
+		}
+		static int KindFromName(std::string_view a_n)
+		{
+			std::string n(a_n);
+			for (auto& c : n) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+			if (n == "row" || n == "rowboat") return kKindRow;
+			if (n.rfind("sail", 0) == 0) return kKindSail;  // sail, sailboat, sailing, sailskin, sailcloth
+			if (n == "longship" || n == "long" || n == "longboat" || n == "viking") return kLongshipOn ? kKindLong : -1;
+			return -1;
+		}
+		// the boat out (or the next one out): RowRim.ini [Boat] Kind (older inis: [Boat] Model); the rowboat with sailing off
+		int Kind() const
+		{
+			if (!SailEnabled()) return kKindRow;
+			if (kind_ < 0) kind_ = IniKind();
+			return kind_;  // v1.8.26: each of the three is always its own kind
+		}
+		const BoatDims& Dims() const { return DimsOf(Kind()); }
+		bool BoatOut() const { return HaveBoat(); }
+		static bool SailingOn() { return SailEnabled(); }
+		static int IniKind()
+		{
+			char b[32]{};
+			const auto ini = Plankton::IniPath();
+			GetPrivateProfileStringA("Boat", "Kind", "", b, sizeof(b), ini.c_str());
+			if (!b[0]) GetPrivateProfileStringA("Boat", "Model", "row", b, sizeof(b), ini.c_str());
+			const int k = KindFromName(b);
+			return k < 0 ? kKindRow : k;
+		}
+	private:
+		mutable int kind_{ -1 };
+	public:
 
 		// ---- commands ----
 		void Spawn(bool a_underPlayer)
@@ -926,11 +1523,12 @@ namespace
 			const float yaw = player->GetAngleZ();
 			const RE::NiPoint3 fwd{ std::sin(yaw), std::cos(yaw), 0.0f };
 			const RE::NiPoint3 feet = player->GetPosition();
-			RE::NiPoint3 at = a_underPlayer ? feet : RE::NiPoint3{ feet.x + fwd.x * 350.0f, feet.y + fwd.y * 350.0f, feet.z };
+			const float ahead = 350.0f;
+			RE::NiPoint3 at = a_underPlayer ? feet : RE::NiPoint3{ feet.x + fwd.x * ahead, feet.y + fwd.y * ahead, feet.z };
 			float water = 0.0f;
 			const bool wet = WaterAt(at, water);
-			if (a_underPlayer) at.z = feet.z - kDeckZ - 3.0f;  // deck just under the feet
-			else at.z = wet ? water + kWaterZ + heightOff_ : feet.z - kDeckZ;
+			if (a_underPlayer) at.z = feet.z - Dims().deckZ - 3.0f;  // deck just under the feet
+			else at.z = wet ? water + WaterZ() + heightOff_ : feet.z - Dims().deckZ;
 			SpawnAt(at, yaw, a_underPlayer ? "under you" : "ahead", wet ? std::format("water {:.0f}", water) : std::string("no water"));
 		}
 
@@ -939,9 +1537,11 @@ namespace
 		{
 			Delete(false);
 			auto* player = RE::PlayerCharacter::GetSingleton();
-			auto* base = RE::TESForm::LookupByID<RE::TESObjectSTAT>(kRowBoatStatic);
-			if (!base) base = RE::TESForm::LookupByEditorID<RE::TESObjectSTAT>("ShipRowBoat01");
-			if (!player || !base || !player->GetParentCell()) { Print("RowRim: no player cell or ShipRowBoat01 base"); return; }
+			auto* base = HullBase();  // v1.8.8: each boat its own hull (the rowboat ShipRowBoat01, the others from OarsAndSails.esl)
+			if (!player || !base || !player->GetParentCell()) {
+				Print(std::format("RowRim: no player cell or no hull for the {} ({})", Dims().label, Kind() == kKindRow ? "ShipRowBoat01" : "OarsAndSails.esl from this build: tick it"));
+				return;
+			}
 			const RE::NiPoint3 at = a_at;
 			const float yaw = a_yaw;
 
@@ -950,6 +1550,12 @@ namespace
 			auto ref = player->PlaceObjectAtMe(base, persist_);
 			if (!ref) { Print("RowRim: PlaceObjectAtMe failed"); return; }
 			refId_ = ref->GetFormID();
+			kind_ = Kind();  // v1.8.8: this boat is this kind (saved with it)
+			if (kind_ != kKindRow) {  // its hull is an activator: no prompt, no activation (the prompts are the pick proxies)
+				ref->extraList.SetExtraFlags(RE::ExtraFlags::Flag::kBlockActivate, true);
+				ref->extraList.SetExtraFlags(RE::ExtraFlags::Flag::kBlockPlayerActivate, true);
+				ref->extraList.SetExtraFlags(RE::ExtraFlags::Flag::kBlockActivateText, true);
+			}
 			ref->data.angle = RE::NiPoint3{ 0.0f, 0.0f, yaw };
 			ref->SetPosition(at);
 			if (persist_ && mobile_) MakeMobile(ref.get(), at, yaw);
@@ -962,14 +1568,14 @@ namespace
 			initTries_ = 0;
 			havePose_ = false;
 			inits_ = 0;
-			Print(std::format("RowRim: boat {:08X} placed {} ({}) at {:.0f} {:.0f} {:.0f} yaw {:.0f}; mode {}; {}, cell hop {}",
-				refId_, a_where, a_water, at.x, at.y, at.z, yaw * 180.0f / kPi, ModeName(mode_), persist_ ? "persistent" : "temporary", hop_ ? "on" : "off"));
+			Print(std::format("RowRim: {} {:08X} placed {} ({}) at {:.0f} {:.0f} {:.0f} yaw {:.0f}; mode {}; {}, cell hop {}",
+				Dims().label, refId_, a_where, a_water, at.x, at.y, at.z, yaw * 180.0f / kPi, ModeName(mode_), persist_ ? "persistent" : "temporary", hop_ ? "on" : "off"));
 		}
 
 		// ---- v1.7.8: docks (OAS 56.51 / 56.61). Boat spots placed by hand, shipped in RowRim_Docks.ini. There is one boat,
 		// so a dock calls it: walk within 7000 of a dock (its cell loaded) while your boat is somewhere else and it is waiting
 		// there, facing the way it was placed, in that dock's own paint. A boat you left within 4000 of you is never taken. ----
-		struct Dock { RE::FormID world{ 0 }; float x{ 0 }, y{ 0 }, z{ 0 }, yaw{ 0 }; std::string name; };
+		struct Dock { RE::FormID world{ 0 }; float x{ 0 }, y{ 0 }, z{ 0 }, yaw{ 0 }; std::string name; int boat{ 0 }; };  // v1.8.87: boat 0 the rowboat, 1 the sailing boat (RowRim_Docks.ini Boat=row|sail)
 		std::vector<Dock> docks_;
 		bool docksLoaded_{ false };
 		bool docksOn_{ true };
@@ -1001,6 +1607,8 @@ namespace
 				GetPrivateProfileStringA(sec.c_str(), "Z", "", z, sizeof(z), path.c_str());
 				GetPrivateProfileStringA(sec.c_str(), "Yaw", "", a, sizeof(a), path.c_str());
 				GetPrivateProfileStringA(sec.c_str(), "Name", "", nm, sizeof(nm), path.c_str());
+				char bt[16]{};
+				GetPrivateProfileStringA(sec.c_str(), "Boat", "row", bt, sizeof(bt), path.c_str());
 				if (!w[0] || !x[0] || !y[0]) continue;
 				try {
 					Dock d;
@@ -1010,6 +1618,7 @@ namespace
 					d.z = z[0] ? std::stof(z) : 0.0f;
 					d.yaw = a[0] ? std::stof(a) : 0.0f;
 					d.name = nm[0] ? nm : sec;
+					d.boat = _stricmp(bt, "sail") == 0 ? static_cast<int>(kKindSail) : static_cast<int>(kKindRow);
 					docks_.push_back(std::move(d));
 				} catch (...) { logger::warn("Docks: {} unreadable, skipped", sec); }
 			}
@@ -1026,6 +1635,7 @@ namespace
 				const auto& d = docks_[i];
 				const std::string sec = std::format("Dock{}", i + 1);
 				WritePrivateProfileStringA(sec.c_str(), "Name", d.name.c_str(), path.c_str());
+				WritePrivateProfileStringA(sec.c_str(), "Boat", d.boat == static_cast<int>(kKindSail) ? "sail" : "row", path.c_str());
 				WritePrivateProfileStringA(sec.c_str(), "World", std::format("{:08X}", d.world).c_str(), path.c_str());
 				WritePrivateProfileStringA(sec.c_str(), "X", std::format("{:.1f}", d.x).c_str(), path.c_str());
 				WritePrivateProfileStringA(sec.c_str(), "Y", std::format("{:.1f}", d.y).c_str(), path.c_str());
@@ -1079,7 +1689,7 @@ namespace
 					Spawn(false);  // no boat beside you: one ahead, as oas boat does, and that spot is saved
 					if (!HaveBoat()) return "no boat near you and none could be placed ahead";
 				}
-				Dock d{ world, pos_.x, pos_.y, pos_.z, yaw_, rest.empty() ? std::format("dock{}", docks_.size() + 1) : rest };
+				Dock d{ world, pos_.x, pos_.y, pos_.z, yaw_, rest.empty() ? std::format("dock{}", docks_.size() + 1) : rest, kind_ == kKindSail ? static_cast<int>(kKindSail) : static_cast<int>(kKindRow) };
 				docks_.push_back(d);
 				SaveDocks();
 				dockServed_ = static_cast<int>(docks_.size()) - 1;
@@ -1103,7 +1713,7 @@ namespace
 				for (std::size_t i = 0; i < docks_.size(); ++i) {
 					const auto& d = docks_[i];
 					const std::string line = d.world == world ? std::format("  {} '{}' {:.0f} away, facing {:.0f} deg, {}", i + 1, d.name, std::hypot(d.x - pp.x, d.y - pp.y),
-						d.yaw * 57.2958f, Paint::kNames[DockPaint(d.name)])
+						d.yaw * 57.2958f, d.boat == static_cast<int>(kKindSail) ? "sailing boat" : "rowboat")
 					                                          : std::format("  {} '{}' (other worldspace {:08X})", i + 1, d.name, d.world);
 					if (console) console->Print("%s", line.c_str());
 					logger::info("Docks:{}", line);
@@ -1120,7 +1730,217 @@ namespace
 				dockServed_ = -1;
 				return std::format("{} docks reloaded", docks_.size());
 			}
-			return "usage: oas \"dock add <name>\" | \"dock del\" | \"dock list\" | \"dock on\" / \"dock off\" | \"dock reload\"";
+			return "usage: oas \"dock add <name>\" (the boat in use: oas boat sail first for a sailing boat dock) | \"dock del\" | \"dock list\" | \"dock on\" / \"dock off\" | \"dock reload\"";
+		}
+
+		// ---- v1.8.47: each boat's own dock. v1.8.50: each boat keeps every spot you docked it at (up to 12), not only the
+		// last: "Dock here" on its page (oas "home here <boat>") brings that boat to the water ahead of you, wherever it is
+		// (even close by), and adds the spot (one within 2000 of an old spot replaces it). Come back within 7000 of any of its
+		// spots with the boat somewhere else and it is waiting there, facing as it was put (the rowboat no longer answers the
+		// shipped docks). A boat you left within 4000 of you is never taken. "Reset dock" (oas "home reset <boat>") ends the
+		// spot you are at (none near: all of them), "Reset all" (oas "home resetall <boat>") every one. Kept in
+		// RowRim_Docks.ini, [Home.row] / [Home.sail] / [Home.longship]: Count, Spot1..N = world x y z yaw. ----
+		struct Home { RE::FormID world{ 0 }; float x{ 0 }, y{ 0 }, z{ 0 }, yaw{ 0 }; };
+		static constexpr int kHomeMax = 12;
+		static constexpr float kHomeSame = 2000.0f;
+		std::vector<Home> homes_;
+		bool homeLoaded_{ false };
+		int homeServed_{ -1 };
+		float homeTick_{ 0.0f }, homeWait_{ 6.0f };  // after a load: the save's own boat first
+		std::string HomeSec() const { return std::format("Home.{}", DimsOf(kind_).name); }
+		void LoadHome()
+		{
+			homeLoaded_ = true;
+			homes_.clear();
+			homeServed_ = -1;
+			const std::string path = DockIniPath(), sec = HomeSec();
+			const int n = static_cast<int>(GetPrivateProfileIntA(sec.c_str(), "Count", -1, path.c_str()));
+			if (n < 0) {  // v1.8.47's one spot: World, X, Y, Z, Yaw
+				char w[32]{}, x[32]{}, y[32]{}, z[32]{}, a[32]{};
+				GetPrivateProfileStringA(sec.c_str(), "World", "", w, sizeof(w), path.c_str());
+				GetPrivateProfileStringA(sec.c_str(), "X", "", x, sizeof(x), path.c_str());
+				GetPrivateProfileStringA(sec.c_str(), "Y", "", y, sizeof(y), path.c_str());
+				GetPrivateProfileStringA(sec.c_str(), "Z", "", z, sizeof(z), path.c_str());
+				GetPrivateProfileStringA(sec.c_str(), "Yaw", "", a, sizeof(a), path.c_str());
+				if (w[0] && x[0] && y[0]) {
+					try {
+						Home h{ static_cast<RE::FormID>(std::stoul(w, nullptr, 16)), std::stof(x), std::stof(y), z[0] ? std::stof(z) : 0.0f, a[0] ? std::stof(a) : 0.0f };
+						if (h.world) homes_.push_back(h);
+					} catch (...) { logger::warn("Docks: [{}] unreadable, ignored", sec); }
+				}
+			} else {
+				for (int i = 1; i <= (std::min)(n, kHomeMax); ++i) {
+					char s[128]{};
+					GetPrivateProfileStringA(sec.c_str(), std::format("Spot{}", i).c_str(), "", s, sizeof(s), path.c_str());
+					unsigned w = 0;
+					Home h{};
+					if (std::sscanf(s, "%x %f %f %f %f", &w, &h.x, &h.y, &h.z, &h.yaw) >= 3 && w) { h.world = w; homes_.push_back(h); }
+					else if (s[0]) logger::warn("Docks: [{}] Spot{} unreadable, ignored", sec, i);
+				}
+			}
+			for (const auto& h : homes_)
+				logger::info("Docks: the {}'s own dock: world {:08X} at ({:.0f}, {:.0f}, {:.0f}) facing {:.0f} deg", DimsOf(kind_).label, h.world, h.x, h.y, h.z, h.yaw * 57.2958f);
+		}
+		void SaveHome()
+		{
+			const std::string path = DockIniPath(), sec = HomeSec();
+			WritePrivateProfileStringA(sec.c_str(), nullptr, nullptr, path.c_str());  // the section gone
+			if (homes_.empty()) return;
+			WritePrivateProfileStringA(sec.c_str(), "Count", std::to_string(homes_.size()).c_str(), path.c_str());
+			for (size_t i = 0; i < homes_.size(); ++i) {
+				const auto& h = homes_[i];
+				WritePrivateProfileStringA(sec.c_str(), std::format("Spot{}", i + 1).c_str(), std::format("{:08X} {:.1f} {:.1f} {:.1f} {:.4f}", h.world, h.x, h.y, h.z, h.yaw).c_str(), path.c_str());
+			}
+		}
+		// the spot of this boat's in this world nearest the point, within a_range (or -1)
+		int NearestHome(RE::FormID a_world, float a_x, float a_y, float a_range, float* a_d = nullptr) const
+		{
+			int best = -1;
+			float bestD = a_range;
+			for (int i = 0; i < static_cast<int>(homes_.size()); ++i) {
+				if (homes_[i].world != a_world) continue;
+				const float d = std::hypot(homes_[i].x - a_x, homes_[i].y - a_y);
+				if (d < bestD) { bestD = d; best = i; }
+			}
+			if (a_d) *a_d = bestD;
+			return best;
+		}
+	public:
+		bool HasHome()
+		{
+			if (!homeLoaded_) LoadHome();
+			return !homes_.empty();
+		}
+		int HomeCount()
+		{
+			if (!homeLoaded_) LoadHome();
+			return static_cast<int>(homes_.size());
+		}
+		// a_perm (v1.8.88): the spot goes into RowRim_Docks.ini as a shipped dock for this boat ([DockN], Boat=row|sail) instead
+		// of the player's own spot ([Home.*])
+		std::string HomeHere(bool a_perm = false)
+		{
+			if (!homeLoaded_) LoadHome();
+			if (a_perm && !docksLoaded_) LoadDocks();
+			if (kind_ != kKindRow && !SailEnabled()) return std::format("the {}: sailing is off (Oars and Sails / Boat), only the rowboat is out", DimsOf(kind_).label);
+			auto* player = RE::PlayerCharacter::GetSingleton();
+			if (!player || !player->GetParentCell()) return "no player";
+			if (seated_) return "get up first";
+			if (havePose_ && HaveBoat() && PlayerAboard()) return std::format("step off the {} first", Dims().label);
+			const RE::FormID world = WorldOf(player);
+			if (!world) return "docks are outdoors only";
+			const float yaw = player->GetAngleZ();
+			const RE::NiPoint3 feet = player->GetPosition();
+			const float ahead = Dims().feelLen + 120.0f;  // its stern clear of you
+			RE::NiPoint3 at{ feet.x + std::sin(yaw) * ahead, feet.y + std::cos(yaw) * ahead, feet.z };
+			float water = 0.0f;
+			if (!WaterAt(RE::NiPoint3{ at.x, at.y, at.z + 100.0f }, water)) return std::format("no water {:.0f} ahead of you: face the water and try again", ahead);
+			at.z = water + WaterZ() + heightOff_;
+			SpawnAt(at, yaw, "at its new dock", std::format("water {:.0f}", water));
+			if (!HaveBoat()) return std::format("the {} could not be placed", Dims().label);
+			if (a_perm) {
+				const int boatKind = kind_ == kKindSail ? static_cast<int>(kKindSail) : static_cast<int>(kKindRow);
+				int nearI = -1;
+				float nearD = kHomeSame;
+				int sameKind = 0;
+				for (int i = 0; i < static_cast<int>(docks_.size()); ++i) {
+					if (docks_[i].boat != boatKind) continue;
+					++sameKind;
+					if (docks_[i].world != world) continue;
+					const float dd = std::hypot(docks_[i].x - pos_.x, docks_[i].y - pos_.y);
+					if (dd < nearD) { nearD = dd; nearI = i; }
+				}
+				const bool replaced = nearI >= 0;
+				Dock d{ world, pos_.x, pos_.y, pos_.z, yaw_, replaced ? docks_[nearI].name : std::format("{}{}", Dims().name, sameKind + 1), boatKind };
+				if (replaced) docks_[nearI] = d; else docks_.push_back(d);
+				SaveDocks();
+				dockServed_ = replaced ? nearI : static_cast<int>(docks_.size()) - 1;
+				logger::info("Docks: the {} docked here for good ('{}'{}): world {:08X} at ({:.0f}, {:.0f}, {:.0f}) facing {:.0f} deg", Dims().label, d.name, replaced ? ", in place of the dock near it" : "", world, d.x, d.y, d.z, d.yaw * 57.2958f);
+				return std::format("the {} is docked here for good: it is a shipped dock '{}' in RowRim_Docks.ini ({} docks). A boat with a player dock spot (Dock here) ignores shipped docks: Reset all clears them", Dims().label, d.name, docks_.size());
+			}
+			const Home h{ world, pos_.x, pos_.y, pos_.z, yaw_ };
+			int i = NearestHome(world, h.x, h.y, kHomeSame);
+			const bool moved = i >= 0;
+			if (moved) homes_[i] = h;
+			else {
+				if (static_cast<int>(homes_.size()) >= kHomeMax) homes_.erase(homes_.begin());  // the oldest one goes
+				homes_.push_back(h);
+				i = static_cast<int>(homes_.size()) - 1;
+			}
+			SaveHome();
+			homeServed_ = i;
+			dockServed_ = -1;
+			logger::info("Docks: the {} docked here ({} of {}{}): world {:08X} at ({:.0f}, {:.0f}, {:.0f}) facing {:.0f} deg", Dims().label, i + 1, homes_.size(),
+				moved ? ", in place of the spot near it" : "", world, h.x, h.y, h.z, h.yaw * 57.2958f);
+			return std::format("the {} is docked here: it waits here whenever you come back ({} dock spot{})", Dims().label, homes_.size(), homes_.size() == 1 ? "" : "s");
+		}
+		// a_all: every spot; else the spot you are at (none within reach: every spot)
+		std::string HomeReset(bool a_all = false)
+		{
+			if (!homeLoaded_) LoadHome();
+			if (homes_.empty()) return std::format("the {} has no dock of its own", DimsOf(kind_).label);
+			auto* player = RE::PlayerCharacter::GetSingleton();
+			const int i = (!a_all && player) ? NearestHome(WorldOf(player), player->GetPosition().x, player->GetPosition().y, kDockCallRange) : -1;
+			if (i >= 0) homes_.erase(homes_.begin() + i);
+			else homes_.clear();
+			SaveHome();
+			homeServed_ = -1;
+			dockServed_ = -1;
+			logger::info("Docks: the {}'s {} reset, {} left", DimsOf(kind_).label, i >= 0 ? "dock here" : "docks", homes_.size());
+			if (i >= 0) return std::format("the {}'s dock here reset: it stays where it is ({} other dock spot{})", DimsOf(kind_).label, homes_.size(), homes_.size() == 1 ? "" : "s");
+			return std::format("the {}'s docks reset: it stays where it is{}", DimsOf(kind_).label, kind_ == kKindRow ? ", the shipped docks call it again" : "");
+		}
+		std::string HomeStatus()
+		{
+			if (!homeLoaded_) LoadHome();
+			auto* player = RE::PlayerCharacter::GetSingleton();
+			if (homes_.empty()) return std::format("{}: no dock of its own", DimsOf(kind_).label);
+			float d = 0.0f;
+			const int i = player ? NearestHome(WorldOf(player), player->GetPosition().x, player->GetPosition().y, 1.0e9f, &d) : -1;
+			if (i < 0) return std::format("{}: {} dock spot(s), none in this worldspace", DimsOf(kind_).label, homes_.size());
+			return std::format("{}: {} dock spot(s), the nearest {:.0f} away", DimsOf(kind_).label, homes_.size(), d);
+		}
+	private:
+		// once a second while not aboard: the boat to its own dock spot you come near, unless it is near you already
+		void TendHome(float a_dt)
+		{
+			if (homeWait_ > 0.0f) { homeWait_ -= a_dt; return; }
+			if ((homeTick_ -= a_dt) > 0.0f) return;
+			homeTick_ = 1.0f;
+			if (!homeLoaded_) LoadHome();
+			if (homes_.empty() || (kind_ != kKindRow && !SailEnabled()) || (!kLongshipOn && kind_ == kKindLong)) return;
+			auto* player = RE::PlayerCharacter::GetSingleton();
+			if (!player || seated_ || helm_) return;
+			if (havePose_ && HaveBoat() && PlayerAboard()) return;
+			const RE::FormID world = WorldOf(player);
+			const RE::NiPoint3 pp = player->GetPosition();
+			if (homeServed_ >= static_cast<int>(homes_.size())) homeServed_ = -1;
+			if (homeServed_ >= 0) {  // left it (another worldspace, indoors or 8500 away): it calls the boat again next time
+				const auto& s = homes_[homeServed_];
+				if (s.world != world || std::hypot(s.x - pp.x, s.y - pp.y) > kDockCallRange + 1500.0f) homeServed_ = -1;
+			}
+			if (!world) return;
+			auto* cell = player->GetParentCell();
+			if (!cell || !cell->IsAttached()) return;
+			float d = 0.0f;
+			const int i = NearestHome(world, pp.x, pp.y, kDockCallRange, &d);
+			if (i < 0 || i == homeServed_) return;
+			const Home& h = homes_[i];
+			auto* tes = RE::TES::GetSingleton();
+			auto* hcell = tes ? tes->GetCell(RE::NiPoint3{ h.x, h.y, h.z }) : nullptr;
+			if (!hcell || !hcell->IsAttached()) return;  // its cell loaded first
+			if (HaveBoat()) {
+				if (std::hypot(pos_.x - h.x, pos_.y - h.y) < kDockAtSpot) { homeServed_ = i; return; }  // already there
+				if (std::hypot(pos_.x - pp.x, pos_.y - pp.y) < kDockOwnBoatRange) { homeServed_ = i; return; }  // left nearby: kept
+			}
+			float water = 0.0f;
+			const bool wet = WaterAt(RE::NiPoint3{ h.x, h.y, h.z + 100.0f }, water);
+			const RE::NiPoint3 at{ h.x, h.y, wet ? water + WaterZ() + heightOff_ : h.z };
+			SpawnAt(at, h.yaw, "at its dock", std::format("home {}", i + 1));
+			if (HaveBoat()) {
+				homeServed_ = i;
+				logger::info("Docks: the {} is waiting at its own dock {} ({:.0f} from the player)", Dims().label, i + 1, d);
+			}
 		}
 
 	private:
@@ -1131,9 +1951,12 @@ namespace
 			if ((dockTick_ -= a_dt) > 0.0f) return;
 			dockTick_ = 1.0f;
 			if (!docksLoaded_) LoadDocks();
+			if (HasHome()) return;  // v1.8.47: docked at its own spot: the shipped docks leave it be
 			auto* player = RE::PlayerCharacter::GetSingleton();
 			if (!docksOn_ || docks_.empty() || !player || seated_ || helm_) return;
-			if (HaveBoat() && PlayerAboard()) return;
+			// v1.8.26: not while you are on the rowboat itself. v1.8.37: on the sailing boat or the longship it is waiting at the
+			// dock as you come in (it only came once you had stepped off)
+			if (havePose_ && HaveBoat() && PlayerAboard()) return;
 			const RE::FormID world = WorldOf(player);
 			if (!world) return;
 			auto* cell = player->GetParentCell();
@@ -1143,7 +1966,7 @@ namespace
 			float bestD = kDockCallRange;
 			for (int i = 0; i < static_cast<int>(docks_.size()); ++i) {
 				const auto& d = docks_[i];
-				if (d.world != world) continue;
+				if (d.world != world || d.boat != static_cast<int>(kind_)) continue;  // v1.8.87: each boat its own shipped docks
 				const float dd = std::hypot(d.x - pp.x, d.y - pp.y);
 				if (dd < bestD) { bestD = dd; best = i; }
 			}
@@ -1165,7 +1988,7 @@ namespace
 			}
 			float water = 0.0f;
 			const bool wet = WaterAt(RE::NiPoint3{ d.x, d.y, d.z + 100.0f }, water);
-			const RE::NiPoint3 at{ d.x, d.y, wet ? water + kWaterZ + heightOff_ : d.z };
+			const RE::NiPoint3 at{ d.x, d.y, wet ? water + WaterZ() + heightOff_ : d.z };
 			paint_ = DockPaint(d.name);
 			paintedRoot_ = nullptr;
 			SpawnAt(at, d.yaw, "at a dock", d.name);
@@ -1182,14 +2005,14 @@ namespace
 		// stern seat ("Steer Helm") and the middle thwart ("Row Oars"). They are there while you are not seated and within
 		// 1500 of the boat; Board only while you are off the boat. Without OarsAndSails.esl, E works as before. ----
 	public:
-		enum PickKind : int { kPickBoard = 0, kPickSteer, kPickRow, kPickBedroll, kPickSupplies, kPickCount };
+		enum PickKind : int { kPickBoard = 0, kPickSteer, kPickRow, kPickBedroll, kPickSail, kPickCount };  // v1.7.73: the mast
 		// which of ours this is (any of our three activators near the boat, also one left from before a load), or -1
 		int PickKindOf(const RE::TESObjectREFR* a_ref) const
 		{
 			if (!a_ref || (a_ref->GetFormID() >> 24) != 0xFF || !HaveBoat()) return -1;
 			auto* base = a_ref->GetBaseObject();
 			if (!base) return -1;
-			for (int k = 0; k < kPickCount; ++k) if (picks_[k].id && picks_[k].id == a_ref->GetFormID()) return k;  // v1.7.23: bedroll and supplies share a base
+			for (int k = 0; k < kPickCount; ++k) if (picks_[k].id && picks_[k].id == a_ref->GetFormID()) return k;
 			for (int k = 0; k < kPickCount; ++k) {
 				if (picks_[k].base && base == picks_[k].base) {
 					const RE::NiPoint3 p = a_ref->GetPosition();
@@ -1211,103 +2034,24 @@ namespace
 			auto r = pick->GetActiveTarget().get();
 			return r && PickKindOf(r.get()) >= 0;
 		}
-		// v1.7.30: the supplies themselves (not their prompt): close enough and standing to fish from here
-		bool NearSupplies() const
-		{
-			auto* player = RE::PlayerCharacter::GetSingleton();
-			RE::NiPoint3 sup{};
-			if (!player || seated_ || !havePose_ || !Gear::SuppliesSpot(sup)) return false;
-			const RE::NiPoint3 l = PlayerLocal(player);
-			return std::hypot(l.x - sup.x, l.y - sup.y) < 120.0f;  // v1.7.49: 120 (90 lost it from the boat's other side)
-		}
-		bool LookingAtSupplies() const
-		{
-			if (!NearSupplies()) return false;
-			auto* cam = RE::PlayerCamera::GetSingleton();
-			RE::NiPoint3 sup{};
-			if (!cam || !cam->cameraRoot || !Gear::SuppliesSpot(sup)) return false;
-			const auto& cw = cam->cameraRoot->world;
-			const RE::NiPoint3 at = lastAt_ + lastRot_ * RE::NiPoint3{ sup.x, sup.y, sup.z + 12.0f };  // v1.7.49: the tub's mouth
-			const RE::NiPoint3 to = at - cw.translate;
-			const float distance = to.Length();
-			const RE::NiPoint3 forward = cw.rotate * RE::NiPoint3{ 0.0f, 1.0f, 0.0f };
-			// A small aiming cone around the supplies, and explicitly looking
-			// down: a big invisible CC trigger is not proof of aiming at gear.
-			// v1.7.49: a wider cone (25 deg, was 15: the tub is small and the third person camera sits off the head, so the
-			// prompt came and went) and a gentler look down
-			return distance > 1.0f && forward.z < -0.05f &&
-				(to.x * forward.x + to.y * forward.y + to.z * forward.z) / distance > 0.9063f;
-		}
-		bool CanStartBoatFishing() const
-		{
-			if (BoatFishing::quitAfterMenu || BoatFishing::startHold > 0.0f || Gear::g_useIn >= 0.0f || !LookingAtSupplies()) return false;
-			const auto s = BoatFishing::Read();
-			// Fail closed if the CC script is not bound yet. Never start over
-			// a cast, a catch result, or its still-running cleanup stack.
-			return BoatFishing::Idle(s);
-		}
 		// E on one of them (the activator's own Activate, hooked)
 		void OnPick(int a_kind)
 		{
 			auto* player = RE::PlayerCharacter::GetSingleton();
-			if (a_kind == kPickSupplies) {  // v1.7.23: the fishing supplies; v1.7.24: standing only
-				if (!CanStartBoatFishing()) return;
-				if (seated_ || !player || !havePose_) return;
-				// the cast spot: on the water 240 off the side you face, abreast of you (as the CC's own markers, 100-250 out)
-				const float hd = player->data.angle.z;
-				const RE::NiPoint3 fwd{ std::sin(hd), std::cos(hd), 0.0f };
-				const RE::NiPoint3 right = lastRot_ * RE::NiPoint3{ 1.0f, 0.0f, 0.0f };
-				const float side = fwd.x * right.x + fwd.y * right.y >= 0.0f ? 1.0f : -1.0f;
-				const float ly = std::clamp(PlayerLocal(player).y, -200.0f, 150.0f);
-				RE::NiPoint3 spot = lastAt_ + lastRot_ * RE::NiPoint3{ side * 240.0f, ly, 0.0f };
-				// v1.7.25: the marker sits on the boat's own water (the cell's water height there can be the world's
-				// "no water" -14000: the marker went 14000 down and the fishing took you with it), and only on open water
-				const float water = haveWater_ ? waterZ_ : pos_.z - kWaterZ - heightOff_;
-				spot.z = water;
-				const char* why = nullptr;
-				auto* tes = RE::TES::GetSingleton();
-				float land = 0.0f;
-				if (tes && tes->GetLandHeight(spot, land) && std::isfinite(land) && land > water - 40.0f) why = land > water ? "land" : "too shallow";
-				int layer = 0;
-				if (!why && BoatSweep(RE::NiPoint3{ spot.x, spot.y, water + 300.0f }, RE::NiPoint3{ spot.x, spot.y, water + 4.0f }, layer)) why = "something in the way";
-				// v1.7.27: and further out, where the line lands
-				const RE::NiPoint3 farPt = lastAt_ + lastRot_ * RE::NiPoint3{ side * 450.0f, ly, 0.0f };
-				if (!why && tes && tes->GetLandHeight(farPt, land) && std::isfinite(land) && land > water - 40.0f) why = land > water ? "land" : "too shallow";
-				if (!why && BoatSweep(RE::NiPoint3{ farPt.x, farPt.y, water + 300.0f }, RE::NiPoint3{ farPt.x, farPt.y, water + 4.0f }, layer)) why = "something in the way";
-				if (why) {
-					logger::info("Pick: no fishing to the {} side: {} at ({:.0f},{:.0f}), water {:.0f}, land {:.0f}, layer {}", side > 0.0f ? "right" : "left", why, spot.x, spot.y, water, land, layer);
-					RE::SendHUDMessage::ShowHUDMessage(std::format("No open water to fish off this side ({}). Face the other side, or take the boat out further.", why).c_str());
-					return;
-				}
-				// v1.7.27: the marker is where the fisher STANDS (v1.7.26 log: the fishing moved you exactly onto it, the rod then
-				// hung there in the air when you were put back): on the floorboards where you are, kept off the gunwale, facing
-				// straight out over the side
-				const float sx = std::clamp(PlayerLocal(player).x, -35.0f, 35.0f);
-				const RE::NiPoint3 standL{ sx, ly, kDeckZ + 2.0f };
-				const RE::NiPoint3 stand = lastAt_ + lastRot_ * standL;
-				const RE::NiPoint3 outDir = right * side;
-				Gear::SetFishSpot(stand, std::atan2(outDir.x, outDir.y));
-				logger::info("Pick: E on {} (cast to the {} side)", picks_[a_kind].tag, side > 0.0f ? "right" : "left");
-				if (!Gear::UseSuppliesSoon(0.05f)) return;
-				BoatFishing::startHold = 2.0f;  // bridge asynchronous script startup; no double activation
-				BoatFishing::watchAttempt = true;
-				BoatFishing::sawActiveAttempt = false;
-				fishWatch_ = 4.0f;  // v1.7.26
-				fishLocal_ = standL;  // v1.7.27: put back on the marker, never away from it
-				fishPrev_ = player->GetPosition();
-				return;
-			}
 			if (!player || seated_ || !HaveBoat() || !havePose_) return;
+			if ((a_kind == kPickSteer || a_kind == kPickRow) && SeatFlipTooSoon(picks_[a_kind].tag)) return;  // v1.8.57
 			logger::info("Pick: E on {}", picks_[a_kind].tag);
 			if (a_kind == kPickBoard) {
-				// onto the floorboards between the thwarts, standing, facing the bow
-				const RE::NiPoint3 at = lastAt_ + lastRot_ * RE::NiPoint3{ 0.0f, -40.0f, kDeckZ + 6.0f };
+				// onto the floorboards between the thwarts, standing, facing the bow; v1.8.39b: the sailing boat by the helm (just
+				// forward of the stern seat, clear of the tiller to port of it), not amidships
+				const RE::NiPoint3 at = lastAt_ + lastRot_ * (Kind() == kKindSail ? RE::NiPoint3{ seat_.x - 6.0f, seat_.y + 55.0f, Dims().deckZ + 6.0f } : RE::NiPoint3{ 0.0f, -40.0f, Dims().deckZ + 6.0f });
 				for (const char* ev : { "swimStop", "SwimStop" }) player->NotifyAnimationGraph(ev);
 				player->SetPosition(at, true);
 				player->data.angle.z = yaw_ + (bowFlip_ ? kPi : 0.0f);
 				if (auto* cc = player->GetCharController()) cc->SetLinearVelocityImpl(RE::hkVector4());
 				return;
 			}
+			if (a_kind == kPickSail) { SailNext(); return; }  // v1.7.73
 			if (a_kind == kPickBedroll) {  // v1.7.11: unroll; v1.7.12: or pack it up again
 				if (!Gear::BedToggleReady()) return;  // v1.7.47: one toggle at a time (quick repeats hung the game)
 				if (Gear::BedrollOut()) {
@@ -1316,7 +2060,8 @@ namespace
 				} else Gear::Unroll();
 				return;
 			}
-			RequestSit(a_kind == kPickSteer ? SeatKind::kHelm : SeatKind::kRower);
+			if (a_kind == kPickBedroll && Kind() != kKindRow) return;  // v1.8.26
+			RequestSit(a_kind == kPickSteer || Kind() != kKindRow ? SeatKind::kHelm : SeatKind::kRower);  // v1.8.26: the helm only on the sailing boats
 		}
 
 	private:
@@ -1334,7 +2079,7 @@ namespace
 			int check = 0;            // v1.7.50: ticks to the next check while the boat is still
 		};
 		PickProxy picks_[kPickCount] = { { 0x800, "Board (hull)" }, { 0x801, "Steer (stern seat)" }, { 0x802, "Row (middle thwart)" },
-			{ 0x803, "Unroll (the bedroll under the bow thwart)" }, { 0x803, "Fish (the fishing supplies)" } };
+			{ 0x803, "Unroll (the bedroll under the bow thwart)" }, { 0x803, "Sail (the mast)" } };
 		bool picksInit_{ false };
 		bool picksOk_{ false };
 		bool picksSweep_{ true };  // after a load: our prompt activators from the save are removed
@@ -1463,6 +2208,1479 @@ namespace
 			if (fresh) logger::info("Calm: {} slaughterfish / mudcrab(s) leave the boat alone ({} near)", fresh, fish.size());
 		}
 
+		// ---- v1.7.73: the mast and lug sail (hull node RowRim_Sail, built by scripts\clutter\sail.py) ----
+		// sail_: 0 no mast, 1 furled (mast up, sail rolled on the boom), 2 full, 3 reefed. E on the mast steps through them
+		// (Step Mast, Raise Sail, Reef Sail, Lower Mast); kept in RowRim.ini [Clutter] Sail. The rig (yard, boom, sail) turns
+		// about the mast to the wind the boat feels (the weather's wind less the boat's own way): the boom swings out to
+		// half the wind's angle off the stern, lee side, eased like a pendulum, centred when furled; luffing (head to wind)
+		// it shivers. Everything on the rig keeps its distance from the mast at any angle (sail.py), and nothing has
+		// collision. Phase 1: the sail's shape is fixed per state (cloth and wind drive come next).
+	public:
+		static constexpr float kSailY = 132.0f;
+		static constexpr float kSailClothD = 7.5f;  // sail.py kD: the cloth's plane off the mast axis
+		std::string SailPrompt() const
+		{
+			switch (sail_) {
+			case 0: return "Step\nMast";
+			case 1: return "Raise\nSail";
+			case 2: return "Reef\nSail";
+			default: return "Lower\nMast";
+			}
+		}
+		// v1.7.91: how fast the sail drives (1 = the old pace, about twice too fast) and how much the cloth flaps; RowRim.ini
+		// [Sail] Speed / Flap, oas "sail speed 0.5" / "sail flap 0.6", the settings page
+		void SetSailTuning(float a_speed, float a_flap)
+		{
+			LoadSailTuning();
+			if (a_speed >= 0.0f) sailSpeed_ = std::clamp(a_speed, 0.1f, 2.0f);
+			if (a_flap >= 0.0f) sailFlap_ = std::clamp(a_flap, 0.0f, 2.0f);
+			const auto ini = Plankton::IniPath();
+			WritePrivateProfileStringA(SailSection(), "Speed", std::format("{:.2f}", sailSpeed_).c_str(), ini.c_str());
+			WritePrivateProfileStringA(SailSection(), "Flap", std::format("{:.2f}", sailFlap_).c_str(), ini.c_str());
+			Print(std::format("RowRim: sail speed {:.2f} (default 0.50), flapping {:.2f} (default 0.60)", sailSpeed_, sailFlap_));
+		}
+		void SetSailHeadWind(float a_v)  // v1.8.34
+		{
+			LoadSailTuning();
+			sailHead_ = std::clamp(a_v, 0.0f, 1.0f);
+			WritePrivateProfileStringA(SailSection(), "HeadWind", std::format("{:.2f}", sailHead_).c_str(), Plankton::IniPath().c_str());
+			Print(std::format("RowRim: {} goes {:.0f}% of its speed straight into the wind", Dims().label, sailHead_ * 100.0f));
+		}
+		void SetSailMotion(float a_rock, float a_heel)  // v1.8.27d
+		{
+			LoadSailTuning();
+			if (a_rock >= 0.0f) sailRock_ = std::clamp(a_rock, 0.0f, 6.0f);
+			if (a_heel >= 0.0f) sailHeelK_ = std::clamp(a_heel, 0.0f, 3.0f);
+			const auto ini = Plankton::IniPath();
+			WritePrivateProfileStringA(SailSection(), "Rock", std::format("{:.2f}", sailRock_).c_str(), ini.c_str());
+			WritePrivateProfileStringA(SailSection(), "Heel", std::format("{:.2f}", sailHeelK_).c_str(), ini.c_str());
+			Print(std::format("RowRim: {} rocks {:.2f} (default {:.2f}), heels {:.2f} (default {:.2f})", Dims().label, sailRock_, DefRock(), sailHeelK_, DefHeel()));
+		}
+		std::string SailCommand(const std::string& a_arg)
+		{
+			if (!SailEnabled()) return "sailing is off (RowRim.ini [Sail] Enabled=1, then restart)";
+			static const char* names[] = { "off", "furl", "full", "reef" };
+			for (int i = 0; i < 4; ++i)
+				if (a_arg == names[i] || (i == 0 && a_arg == "down") || (i == 1 && a_arg == "on")) { SetSail(i); return std::format("sail {}", names[i]); }
+			return std::format("sail is {} (oas sail off|furl|full|reef)", names[std::clamp(sail_, 0, 3)]);
+		}
+	private:
+		int sail_{ -1 };       // -1: not read from the ini yet
+		float sailLee_{ 0.0f }, sailLeeWant_{ 0.0f }, sailHeel_{ 0.0f }, sailHeelWant_{ 0.0f };  // v1.8.9j: leeway (units/s, + starboard), heel (radians, + starboard down)
+		float sailSide_{ 1.0f };  // v1.7.77: which side the boom is on (held through wobbles downwind)
+		float mastA_{ 0.0f }, sailStA_[3]{ 0.0f, 0.0f, 0.0f }, sailYaw_{ 0.0f }, sailYawVel_{ 0.0f }, sailShiver_{ 0.0f }, sailToggleAt_{ -10.0f };
+		RE::NiAVObject* sailOn_{ nullptr };
+		RE::NiAVObject* sailNode_{ nullptr };
+		RE::NiAVObject* sailRig_{ nullptr };
+		RE::NiAVObject* sailSt_[5]{};  // furled, full, reefed (starboard set), v1.7.78: full, reefed (port set)
+		float sailStShown_[5]{ -1.0f, -1.0f, -1.0f, -1.0f, -1.0f };  // the alpha last applied to each
+		float sailSideW_{ 1.0f };  // v1.7.78: 1 the starboard set shown .. 0 the port set (the cloth bellies downwind)
+		bool sailWasSet_{ false };
+		static constexpr int kSheetN = 16;
+		RE::NiAVObject* sailSheet_[kSheetN]{};  // v1.7.75: the sheet's rope pieces
+		// v1.7.83: the cloth moves. Each set sail's cloth is a BSDynamicTriShape (as the game's faces): its positions are
+		// rewritten every frame from the shape it was built with. Grid 23 x 18 (luff to leech, foot to head), row-major.
+		static constexpr int kClothU = 23, kClothV = 18;
+		struct SailCloth
+		{
+			RE::BSDynamicTriShape* shape{ nullptr };
+			std::vector<RE::NiPoint3> base;
+			float side{ 1.0f };  // +1 the starboard set (bellies +x), -1 the port set
+		};
+		SailCloth cloth_[4]{};  // full, reefed (starboard), full, reefed (port): sailSt_[1..4]
+		float clothT_{ 0.0f }, clothFill_{ 1.0f }, clothLag_{ 0.0f };
+		void FindCloth()
+		{
+			int found = 0;
+			for (int c = 0; c < 4; ++c) {
+				cloth_[c] = SailCloth{};
+				auto* n = sailSt_[c + 1] ? sailSt_[c + 1]->AsNode() : nullptr;
+				if (!n) continue;
+				for (auto& ch : n->GetChildren()) {
+					auto* d = ch ? ch->AsDynamicTriShape() : nullptr;
+					if (!d) continue;
+					auto& rd = d->GetDynamicTrishapeRuntimeData();
+					const auto nv = static_cast<int>(rd.dataSize / 16);
+					if (!rd.dynamicData || nv != kClothU * kClothV) { logger::info("Sail: cloth shape with {} points, not moved", nv); break; }
+					RE::BSSpinLockGuard g(rd.lock);
+					const auto* f = static_cast<const float*>(rd.dynamicData);
+					cloth_[c].base.resize(nv);
+					float sx = 0.0f;
+					for (int i = 0; i < nv; ++i) { cloth_[c].base[i] = { f[i * 4], f[i * 4 + 1], f[i * 4 + 2] }; sx += f[i * 4]; }
+					cloth_[c].side = sx >= 0.0f ? 1.0f : -1.0f;
+					cloth_[c].shape = d;
+					++found;
+					break;
+				}
+			}
+			logger::info("Sail: {} of 4 cloths can move{}", found, found ? "" : " (an older hull: the cloth stays still)");
+		}
+		// the cloth's motion, sideways off the plane of the sail (rig x): it fills with the wind (and empties head to wind),
+		// breathes with the gusts, ripples aft and flutters at the leech (much more when luffing), and lags as the boom
+		// swings. The luff (on the mast), the foot (the boom) and the head (the yard) stay put; nearest the mast it never
+		// comes closer than kD (7.5, mast radius 3): it cannot clip the mast.
+		void MoveCloth(float a_dt, float a_phi, float a_wsp, bool a_set)
+		{
+			const float a = std::abs(a_phi);
+			const float draw = !a_set ? 0.0f : a < 0.5f ? 0.0f : a < 1.2f ? (a - 0.5f) / 0.7f : 1.0f;  // 0 luffing .. 1 full
+			const float want = a_set ? 0.25f + 0.75f * draw * (0.6f + 0.4f * std::clamp(a_wsp * 2.5f, 0.0f, 1.0f)) : 0.3f;
+			clothFill_ += (want - clothFill_) * (1.0f - std::exp(-1.5f * a_dt));
+			clothLag_ += (std::clamp(-sailYawVel_ * 9.0f, -10.0f, 10.0f) - clothLag_) * (1.0f - std::exp(-4.0f * a_dt));
+			const float luffK = a_set ? 1.0f - draw : 0.3f;
+			clothT_ += a_dt * (1.0f + 2.0f * a_wsp + 2.5f * luffK);
+			if (clothT_ > 6283.0f) clothT_ -= 6283.0f;
+			const float t = clothT_;
+			const float gust = 0.07f * std::sin(t * 0.55f) + 0.05f * std::sin(t * 1.37f + 1.1f);
+			LoadSailTuning();  // v1.7.91: the flapping times [Sail] Flap
+			const float ripA = (0.6f + 1.6f * a_wsp + 3.0f * luffK) * sailFlap_;
+			const float flA = (1.0f + 1.5f * a_wsp + 3.5f * luffK) * sailFlap_;
+			for (auto& c : cloth_) {
+				if (!c.shape || c.shape->GetAppCulled()) continue;
+				if (auto* parent = c.shape->parent; parent && parent->GetAppCulled()) continue;
+				auto& rd = c.shape->GetDynamicTrishapeRuntimeData();
+				if (!rd.dynamicData || rd.dataSize / 16 != c.base.size()) continue;
+				RE::BSSpinLockGuard g(rd.lock);
+				auto* f = static_cast<float*>(rd.dynamicData);
+				for (int j = 0; j < kClothV; ++j) {
+					const float sv = static_cast<float>(j) / (kClothV - 1);
+					const float ss = std::sin(kPi * sv);
+					for (int i = 0; i < kClothU; ++i) {
+						const float r = static_cast<float>(i) / (kClothU - 1);
+						const int q = j * kClothU + i;
+						const auto& b = c.base[q];
+						const float off = std::abs(b.x) - kSailClothD;  // the belly it was built with
+						const float sr = std::sin(kPi * r);
+						float x = kSailClothD + off * (clothFill_ + gust * ss);
+						x += ripA * std::sin(7.0f * (r + 0.35f * sv) * kPi - t * 3.1f) * sr * ss;
+						x += flA * r * r * r * std::sqrt(ss) * std::sin(16.0f * sv - t * 7.3f + 1.7f * r);
+						x += clothLag_ * c.side * std::pow(r, 1.3f) * ss;
+						x = (std::max)(x, std::abs(b.y) < 14.0f ? kSailClothD : kSailClothD - 3.0f);
+						f[q * 4] = c.side * x;
+						f[q * 4 + 1] = b.y;
+						f[q * 4 + 2] = b.z;
+					}
+				}
+			}
+		}
+		// v1.7.81: sailing is a work in progress: off unless RowRim.ini [Sail] Enabled=1 (no mast, no prompt, no Jump key)
+		float sailSpeed_{ -1.0f }, sailFlap_{ -1.0f };
+		// v1.8.27d: how much it rocks on the water (the idle swell, more in a wind under sail) and heels under sail;
+		// RowRim.ini [Sail] / [LongshipSail] Rock / Heel, oas "sail rock N" / "sail heel N", each boat's page
+		float sailRock_{ 1.0f }, sailHeelK_{ 1.0f };
+		// v1.8.34: how fast she still goes straight into the wind (the least share of full speed a set sail gives), each
+		// boat its own: RowRim.ini [Sail] / [LongshipSail] HeadWind (first read from [Wind] HeadWind), oas "sail headwind N"
+		float sailHead_{ 0.35f };
+		float DefRock() const { return Kind() == kKindSail ? 2.5f : 1.0f; }
+		float DefHeel() const { return Kind() == kKindSail ? 1.5f : 1.0f; }
+		void LoadSailTuning()
+		{
+			if (sailSpeed_ >= 0.0f) return;
+			const auto ini = Plankton::IniPath();
+			char b[32]{};
+			// v1.7.98: each boat its own: the sailing boat [Sail], the rowboat's lug sail [RowSail] (first read from [Sail])
+			char d[32]{};
+			GetPrivateProfileStringA("Sail", "Speed", "0.50", d, sizeof(d), ini.c_str());
+			GetPrivateProfileStringA(SailSection(), "Speed", d, b, sizeof(b), ini.c_str());
+			try { sailSpeed_ = std::clamp(std::stof(b), 0.1f, 2.0f); } catch (...) { sailSpeed_ = 0.5f; }
+			GetPrivateProfileStringA("Sail", "Flap", "0.60", d, sizeof(d), ini.c_str());
+			GetPrivateProfileStringA(SailSection(), "Flap", d, b, sizeof(b), ini.c_str());
+			try { sailFlap_ = std::clamp(std::stof(b), 0.0f, 2.0f); } catch (...) { sailFlap_ = 0.6f; }
+			GetPrivateProfileStringA("Wind", "HeadWind", "0.35", d, sizeof(d), ini.c_str());  // v1.8.34
+			GetPrivateProfileStringA(SailSection(), "HeadWind", d, b, sizeof(b), ini.c_str());
+			try { sailHead_ = std::clamp(std::stof(b), 0.0f, 1.0f); } catch (...) { sailHead_ = 0.35f; }
+			GetPrivateProfileStringA(SailSection(), "Rock", std::format("{:.2f}", DefRock()).c_str(), b, sizeof(b), ini.c_str());  // v1.8.27d
+			try { sailRock_ = std::clamp(std::stof(b), 0.0f, 6.0f); } catch (...) { sailRock_ = DefRock(); }
+			GetPrivateProfileStringA(SailSection(), "Heel", std::format("{:.2f}", DefHeel()).c_str(), b, sizeof(b), ini.c_str());
+			try { sailHeelK_ = std::clamp(std::stof(b), 0.0f, 3.0f); } catch (...) { sailHeelK_ = DefHeel(); }
+			logger::info("Sail: speed {:.2f}, flapping {:.2f}, rock {:.2f}, heel {:.2f} (RowRim.ini [{}] Speed / Flap / Rock / Heel)", sailSpeed_, sailFlap_, sailRock_, sailHeelK_, SailSection());
+		}
+		const char* SailSection() const { return Dims().sailSec; }  // v1.8.8: each boat's own
+		const char* RowSection() const { return Dims().rowSec; }
+		static bool SailEnabled()
+		{
+			static int on = -1;
+			if (on < 0) {
+				on = GetPrivateProfileIntA("Sail", "Enabled", 1, Plankton::IniPath().c_str()) != 0 ? 1 : 0;  // v1.8.53: on by default (the sailing boat ships)
+				logger::info("Sail: {} (RowRim.ini [Sail] Enabled)", on ? "enabled" : "off");
+			}
+			return on == 1;
+		}
+		void SailLoad()
+		{
+			if (sail_ >= 0) return;
+			// v1.8.21: the rowboat never has a sail (its lug sail and mast are gone for good); the sailing boat and longship keep theirs
+			if (!SailEnabled() || Kind() == kKindRow) { sail_ = 0; mastA_ = 0.0f; for (auto& a : sailStA_) a = 0.0f; return; }
+			sail_ = std::clamp(static_cast<int>(GetPrivateProfileIntA(RowRimBakedIni::BoatSec(Kind(), "Clutter"), "Sail", 0, Plankton::IniPath().c_str())), 0, 3);  // v1.8.26: each boat's own
+			mastA_ = sail_ > 0 ? 1.0f : 0.0f;
+			for (int i = 0; i < 3; ++i) sailStA_[i] = sail_ == i + 1 ? 1.0f : 0.0f;
+		}
+		void SetSail(int a_state)
+		{
+			SailLoad();
+			if (!SailEnabled() || Kind() == kKindRow) return;  // v1.8.21
+			sail_ = std::clamp(a_state, 0, 3);
+			WritePrivateProfileStringA(RowRimBakedIni::BoatSec(Kind(), "Clutter"), "Sail", std::to_string(sail_).c_str(), Plankton::IniPath().c_str());
+			logger::info("Sail: {}", sail_ == 0 ? "mast down" : sail_ == 1 ? "furled" : sail_ == 2 ? "full" : "reefed");
+		}
+		void SailNext()
+		{
+			const double now = NowS();
+			if (now - sailToggleAt_ < 0.8) return;  // one step a press
+			sailToggleAt_ = now;
+			SailLoad();
+			SetSail(sail_ == 0 ? 1 : sail_ == 1 ? 2 : sail_ == 2 ? 3 : 0);
+		}
+		// v1.7.74: the wind the boat feels, in its own frame: a_phi where it blows, off the stern (+ starboard: 0 head to
+		// wind, pi dead astern); a_str its strength 0..1. RowRim.ini [Sail] WindFlip=1 if the game's wind turns out reversed.
+		void SailWind(float& a_phi, float& a_str)
+		{
+			// v1.8.28: our own wind (OwnWind: its own wandering direction, its strength from the weather), not the sky's
+			const float wsp = OwnWind::Str(), wang = OwnWind::Dir();
+			const float hd = yaw_ + (bowFlip_ ? kPi : 0.0f);
+			const float wx = std::sin(wang) * (0.25f + wsp), wy = std::cos(wang) * (0.25f + wsp);
+			// v1.7.79: the boat's own way barely turns the wind (it was 0.6: at sailing speed it outran a 0.15 wind, the wind
+			// seemed to come from ahead, the boom sat at 30 deg and gybed back and forth running downwind)
+			const float own = std::clamp(speed_ / 300.0f, -1.0f, 1.0f) * 0.06f;
+			const float ax = wx * std::cos(hd) - wy * std::sin(hd);   // toward starboard
+			const float ay = wx * std::sin(hd) + wy * std::cos(hd) - own;  // toward the bow
+			a_phi = std::atan2(ax, -ay);
+			a_str = wsp;  // v1.7.77: the weather's own strength (the boat's way only turns the wind, it no longer weakens it)
+		}
+		// v1.8.9l: Sea of Thieves style trim (sailing boat, longship): W / S at the helm swing the sail while it is set; it
+		// starts at the best angle when set and then stays where you put it. How well it draws goes with how near it is to
+		// the best angle for the wind. RowRim.ini [Sail] ManualTrim=0: the sail trims itself as before.
+		float sailTrim_{ 0.0f };
+		bool SailManual()
+		{
+			return false;  // v1.8.27: removed: the sail always swings to the wind by itself
+		}
+		float SailIdeal(float a_phi) const
+		{
+			const float a = std::abs(a_phi), side = a_phi >= 0.0f ? 1.0f : -1.0f;
+			return lsRig_ ? -side * (std::min)((kPi - a) * 0.6f, 0.87f) : side * (std::min)(a * 0.5f, 1.5708f);
+		}
+		float SailMatch(float a_phi)
+		{
+			if (!SailManual()) return 1.0f;
+			const float ideal = SailIdeal(a_phi), a = std::abs(a_phi);
+			float err = std::abs(sailYaw_ - ideal);
+			if (a < 0.5f || a > kPi - 0.44f) err = (std::min)(err, std::abs(sailYaw_ + ideal));  // nearly head on or dead astern: either side serves
+			const float k = std::clamp(1.0f - err / (lsRig_ ? 0.87f : 1.0f), 0.0f, 1.0f);
+			return k * k * (3.0f - 2.0f * k);
+		}
+		void TendTrim(float a_dt, float a_phi, bool a_set, float a_limit, float& a_target)
+		{
+			if (!SailManual() || !a_set) return;
+			if (!sailWasSet_) sailTrim_ = SailIdeal(a_phi);
+			if (seated_ && seatKind_ == SeatKind::kHelm) {
+				const float in = ((inFwd_ || stickY_ > 0.4f) ? 1.0f : 0.0f) - ((inBack_ || stickY_ < -0.4f) ? 1.0f : 0.0f);
+				sailTrim_ = std::clamp(sailTrim_ + in * 0.5f * a_dt, -a_limit, a_limit);
+			}
+			a_target = sailTrim_;
+		}
+		// v1.8.9b: the sail draws with you seated or anywhere aboard (stand up from the helm and it sails on, holding its course)
+		bool SailDrawing() const { return (sailNode_ || sbMain_ || lsRig_) && (seated_ || PlayerAboard()) && (sail_ == 2 || sail_ == 3) && (sbMain_ || lsRig_ || mastA_ > 0.5f); }
+		// v1.7.74: the sail drives the boat, only while you are seated (helm or rower seat). How well it draws by where the
+		// wind blows: nothing head to wind (inside 40 deg), best across (90), a little less running dead downwind. Reefed
+		// carries 55 percent. Its top speed grows with the wind: about rowing pace in a light breeze, faster in a gale.
+		void SailDrive(float a_dt)
+		{
+			if (!SailDrawing()) return;
+			if (AnchorHolding()) return;  // v1.8.29: at anchor the sail drives nothing
+			float phi = 0.0f, str = 0.0f;
+			SailWind(phi, str);
+			const float a = std::abs(phi);  // 0 head to wind .. pi from astern
+			// v1.8.8: the longship's square sail points less high: nothing inside 60 deg of the wind, full from 115 deg aft
+			const float kNoGo = lsRig_ ? 1.05f : 0.70f, kBeam = lsRig_ ? 2.0f : 1.5708f;
+			float eff = 0.0f;
+			// v1.7.79: full from a beam reach all the way round to dead downwind (the boom squared out at 90 deg)
+			if (a > kNoGo) eff = a < kBeam ? std::sin((a - kNoGo) / (kBeam - kNoGo) * 1.5708f) : 1.0f;
+			// v1.8.9j: points of sail. Fore-and-aft rigs point well (60 deg off the wind about 70 percent); from 120 deg aft each
+			// rig falls off to its dead-downwind share: sailing boat 0.65, lug sail 0.8, the square sail 0.9
+			if (!lsRig_ && eff > 0.0f && a < kBeam) eff = std::pow(eff, 0.7f);
+			if (a > 2.1f) {
+				const float u = std::clamp((a - 2.1f) / (kPi - 2.1f), 0.0f, 1.0f);
+				const float run = lsRig_ ? 0.9f : sbMain_ ? 0.65f : 0.8f;
+				eff *= 1.0f + (run - 1.0f) * u * u * (3.0f - 2.0f * u);
+			}
+			// v1.8.9l: Sea of Thieves style (sailing boat, longship): the sail's angle counts, and it never stalls
+			const float match = SailMatch(phi);
+			if (lsRig_ || sbMain_) eff = (std::max)(sailHead_, eff * match);  // v1.8.28: always under way; v1.8.34: each boat's own [Sail] HeadWind
+			// v1.7.90: the sailing boat carries a main and a jib: more cloth than the lug sail (reefed: part of the main only)
+			const float area = lsRig_ ? (sail_ == 2 ? 1.6f : 0.8f) : sbMain_ ? (sail_ == 2 ? 1.3f : 0.6f) : (sail_ == 2 ? 1.0f : 0.55f);  // v1.8.8: the longship's big square sail
+			// v1.7.77: faster: a fresh breeze (0.3) about 1.4x rowing pace, a gale about 2.7x
+			// v1.7.91: times [Sail] Speed (0.5 by default: a breeze about rowing pace, a gale about 1.4x; was twice that)
+			LoadSailTuning();
+			const float anK = Kind() == kKindSail ? anDrive_ : 1.0f;  // v1.8.29d: the anchor holds her back, then she gathers way slowly
+			const float top = rowMax_ * (0.9f + 1.8f * str) * area * eff * sailSpeed_ * anK;
+			const float before = speed_;
+			// v1.8.9j: eff > 0 here: in the no-go zone nothing drives, so a boat going astern used to keep going astern for ever
+			if (eff > 0.0f && top > speed_) speed_ = (std::min)(top, speed_ + (55.0f + 90.0f * str) * area * eff * (0.4f + 0.6f * sailSpeed_) * anK * a_dt);
+			else {
+				// v1.7.78: more than the wind gives: it slows to it. v1.8.9j: a fore-and-aft boat carries its way through a tack
+				const float slow = (eff <= 0.0f && !lsRig_) ? 0.3f : 0.5f;
+				speed_ += (top - speed_) * (1.0f - std::exp(-slow * a_dt));
+			}
+			// v1.8.9j: leeway and heel, most close-hauled, none running. The side force is the part of the wind across the boat
+			const float across = std::sin(a) * (a < 1.5708f ? 1.0f + (1.5708f - a) : 1.0f);
+			const float leeSign = phi > 0.0f ? 1.0f : -1.0f;  // to leeward. v1.8.9l: phi + = the wind blows toward starboard (from port)
+			sailLeeWant_ = onLand_ ? 0.0f : leeSign * (std::max)(0.0f, speed_) * across * (lsRig_ ? 0.16f : 0.08f);
+			sailHeelWant_ = onLand_ ? 0.0f : leeSign * std::clamp(std::sin(a) * eff * (0.04f + 0.14f * str) * area, 0.0f, 0.12f);
+			// v1.7.78: every half second while the sail draws: everything that decides the boom and the speed
+			static float s_logT = 0.0f;
+			if ((s_logT -= a_dt) <= 0.0f) {
+				s_logT = 10.0f;  // v1.8.79: was every half second (a third of the whole log)
+				logger::info("Sail: wind {:.0f} off the stern (ours {:.2f} rad, {:.2f}), heading {:.0f}, side {}, boom {:.0f} (vel {:.0f}/s), cloth {}, trim {:.2f}, draws {:.2f}, top {:.0f}, speed {:.0f} -> {:.0f}, lee {:.1f}, heel {:.1f}, {} seat",
+					phi * 57.2958f, OwnWind::Dir(), OwnWind::Str(), (yaw_ + (bowFlip_ ? kPi : 0.0f)) * 57.2958f, sailSide_ > 0.0f ? "stbd" : "port",
+					sailYaw_ * 57.2958f, sailYawVel_ * 57.2958f, sailSideW_ > 0.5f ? "stbd" : "port", match, eff, top, before, speed_, sailLee_, sailHeel_ * 57.2958f, seatKind_ == SeatKind::kHelm ? "helm" : "rower");
+			}
+		}
+	public:
+		// v1.7.74: Jump while seated sets the sail: furled -> full -> reefed -> furled (the mast itself: [E] on it, standing)
+		void OnSailKey()
+		{
+			if (!seated_ || !(sailNode_ || sbMain_ || lsRig_) || !SailEnabled() || Kind() == kKindRow) return;  // v1.8.21: no sail on the rowboat
+			SailLoad();
+			if (sail_ == 0 && (sbMain_ || lsRig_)) sail_ = 1;
+			if (sail_ == 0) { RE::SendHUDMessage::ShowHUDMessage("Step the mast first ([E] on the mast)"); return; }
+			const double now = NowS();
+			if (now - sailToggleAt_ < 0.8) return;
+			sailToggleAt_ = now;
+			if (sbMain_) { SetSail(sail_ == 1 ? 2 : sail_ == 2 ? 3 : 1); return; }  // v1.8.29: the sailing boat: stowed, full, reefed (Sprint)
+			if (lsRig_) { SetSail(sail_ == 2 ? 1 : 2); return; }  // v1.7.94: stowed <-> full (v1.8.8: the longship)
+			SetSail(sail_ == 1 ? 2 : sail_ == 2 ? 3 : 1);
+		}
+	private:
+		// ---- v1.7.90: the sailing boat's own rig (RowRim_SailBoat.nif, oas model sail) ----
+		// SB_MainRig turns about the mast like the lug sail's rig (the same wind, boom pendulum, gybes and drive); SB_Gaff in
+		// it drops to reef or stow the main; SB_JibRig swings about the forestay (its own z), following the boom. Both sails
+		// are BSDynamicTriShapes: rebuilt every frame from their built shape: hoisted (gathered toward the boom / the tack),
+		// bellied to the lee side (crossfaded through flat as the boom crosses), breathing, rippling and fluttering as the
+		// lug sail's cloth does. Stowed (furled): both sails hidden, the gaff down on the boom. Reefed: the main part way,
+		// no jib. The mast is always up on this boat.
+		struct SbCloth
+		{
+			RE::BSDynamicTriShape* shape{ nullptr };
+			std::vector<RE::NiPoint3> base;
+			std::vector<float> t, u;     // t: 0 at the foot .. 1 at the head; u: 0 at the luff .. 1 at the leech
+			float built{ 1.0f };         // the side the belly was built on (+1 +x)
+		};
+		RE::NiAVObject* sbOn_{ nullptr };
+		RE::NiAVObject* sbMain_{ nullptr };
+		RE::NiAVObject* sbMainT0On_{ nullptr };  // v1.8.39: the rig's own place in the model (read once a model)
+		RE::NiPoint3 sbMainT0_{};
+		RE::NiAVObject* sbGaff_{ nullptr };
+		RE::NiAVObject* sbJib_{ nullptr };
+		RE::NiAVObject* sbHal_{ nullptr };
+		RE::NiAVObject* sbSails_[4]{};  // v1.7.95: main starboard, main port, jib starboard, jib port (thin solids, one shown a sail)
+		// v1.7.96: the sails skinned to a grid of bones (rows up the sail, columns luff to leech): moving the bones bends the
+		// mesh on the GPU, as armour on a skeleton (the reshaped-every-frame cloth flickered)
+		struct SbBones
+		{
+			RE::NiAVObject* shape{ nullptr };
+			std::vector<RE::NiAVObject*> bone;
+			std::vector<RE::NiPoint3> bind;
+			int rows{ 0 }, cols{ 0 };
+		};
+		SbBones sbMainB_{}, sbJibB_{};
+		SbBones sbSideB_[4]{};
+		RE::NiAVObject* sbClew_{ nullptr };      // v1.8.7: the jib's clew marker (under SB_JibRig)
+		RE::NiAVObject* sbSheet_{ nullptr };     // the jib sheet (skinned rope)
+		RE::NiAVObject* sbRing_{ nullptr };      // v1.8.27e: the iron ring in the jib's clew (shown with the jib)
+		RE::NiAVObject* sbJawOn_{ nullptr };
+		// v1.8.31: the rudder (turning about the sternpost) and the tiller (about its post), as the helmsman steers
+		RE::NiAVObject* sbRudderOn_{ nullptr };
+		RE::NiAVObject* sbRudder_{ nullptr };
+		RE::NiAVObject* sbTiller_{ nullptr };
+		float rudderA_{ 0.0f };
+		// v1.8.40: the helm clip, and the arm on the tiller
+		bool helmAnimOn_{ false }, helmEverOk_{ false }, helmPoseWarned_{ false };
+		float helmAnimAt_{ 0.0f }, helmRetry_{ 0.0f };
+		int helmRejects_{ 0 };
+		int helmPose_{ 0 };  // v1.8.41: the clip on: 0 at rest, 1 the tiller over to the left (steering right), -1 to the right
+		float helmPoseAt_{ 0.0f }, helmPoseFromA_{ 0.0f }, helmTillerA_{ 0.0f };
+		float helmPhi0_{ 0.0f }, helmHandA_{ 0.0f };  // v1.8.42: his wrist's angle round the tiller's post at rest; the tiller from it
+		bool helmPhiHave_{ false };
+		RE::NiAVObject* sbJaw_[4]{};             // v1.8.29: SB_JawRopeS / P, SB_JawIronS / P
+		RE::NiAVObject* sbFurlOn_{ nullptr };
+		RE::NiAVObject* sbFurl_[6]{};            // v1.8.30: the main's furl and ties, its reef roll and points, the jib's roll and wrap
+		RE::NiAVObject* sbSheetB_[2]{};          // its two end bones: the fairlead, the clew
+		RE::NiNode* sbSheetBox_{ nullptr };  // v1.8.4: the skinned sails per side: main starboard, main port, jib starboard, jib port
+		static void SbFindBones(RE::NiAVObject* a_root, const char* a_shape, const char* a_box, int a_rows, int a_cols, SbBones& a_out)
+		{
+			a_out = SbBones{};
+			auto* shape = FindShape(a_root, a_shape);
+			auto* box = FindShape(a_root, a_box);
+			auto* node = box ? box->AsNode() : nullptr;
+			if (!shape || !node || static_cast<int>(node->GetChildren().size()) != a_rows * a_cols) return;
+			for (auto& ch : node->GetChildren()) {
+				if (!ch) { a_out = SbBones{}; return; }
+				a_out.bone.push_back(ch.get());
+				a_out.bind.push_back(ch->local.translate);
+			}
+			a_out.shape = shape; a_out.rows = a_rows; a_out.cols = a_cols;
+		}
+		// the bones moved across the sail (its x): the belly to the lee side (a_side -1 port .. +1 starboard, through flat as
+		// the boom crosses), filled by the wind, rippling and fluttering at the leech, lagging as the boom swings
+		// v1.8.4: the per-side skinned sails. The cloth is the original mesh as made (its bind pose), the port one that mesh
+		// mirrored vertex for vertex; the bones only add small offsets around it, faded to nothing at every edge (the
+		// edges never flap), mirrored with the side (a_mir +1 starboard, -1 port). Placed fresh from the bind each frame.
+		void SbFlap(SbBones& a_b, float a_mir, float a_wsp, float a_luffK, bool a_jib, float a_fill, float a_hoist = 1.0f)
+		{
+			if (!a_b.shape || a_b.rows < 3 || a_b.cols < 3 || a_b.shape->GetAppCulled()) return;
+			const float t0 = sbT_;
+			const float ripA = (0.5f + 1.3f * a_wsp + 2.5f * a_luffK) * sailFlap_;
+			const float flA = (0.4f + 0.8f * a_wsp + 1.8f * a_luffK) * sailFlap_;
+			const float gust = (0.06f * std::sin(t0 * 0.55f) + 0.04f * std::sin(t0 * 1.37f + 1.1f)) * (std::min)(sailFlap_, 1.0f);
+			const float lag = std::clamp(sbLag_, -6.0f, 6.0f) * (a_jib ? 0.6f : 1.0f);
+			for (int r = 0; r < a_b.rows; ++r) {
+				const float t = static_cast<float>(r) / static_cast<float>(a_b.rows - 1);
+				for (int c = 0; c < a_b.cols; ++c) {
+					const float u = static_cast<float>(c) / static_cast<float>(a_b.cols - 1);
+					const int i = r * a_b.cols + c;
+					const auto& b = a_b.bind[i];
+					const float st = (std::max)(std::sin(kPi * t), 0.0f), su = (std::max)(std::sin(kPi * u), 0.0f);
+					const float m = std::pow(st * su, 1.5f);
+					float d = b.x * gust * m;                                                         // breathing (mirrors with b.x)
+					d += a_mir * ripA * m * std::sin(2.2f * (u + 0.35f * t) * kPi - t0 * 3.1f);       // a slow wave across
+					d += a_mir * flA * m * std::sin(4.5f * t - t0 * 7.3f + 1.7f * u);                 // a quicker shiver up
+					d += lag * m;                                                                     // lagging the boom
+					// a_fill 1 the mesh as made, 0 emptied to flat (mid change of side): the bones carry the belly away
+					// v1.8.29: hoisted part way (reefed), gathered down toward the boom: the head as far down as the gaff
+					float z = b.z;
+					float y = b.y;
+					if (a_hoist < 0.999f && !a_jib) {
+						const float zf = a_b.bind[c].z, zh = a_b.bind[(a_b.rows - 1) * a_b.cols + c].z;
+						if (zh - zf > 1.0f) z = zf + (b.z - zf) * (std::max)(0.05f, 1.0f - (1.0f - a_hoist) * kSbGaffDrop / (zh - zf));
+					}
+					// v1.8.30: coming down it folds (flaked side to side, the folds deeper the more it is gathered)
+					// v1.8.30h: not the jib (it scrunched): it empties and narrows smoothly into its bundle (SbJibStow)
+					const float fold = (r > 0 && a_hoist < 0.999f && !a_jib) ? ((r & 1) ? 1.0f : -1.0f) * 4.5f * (1.0f - a_hoist) * su : 0.0f;
+					// v1.8.33: head to wind the sail empties flat (its belly by how well it draws, sbFill_), and as it changes side it
+					// goes flat through the middle (a_fill); either way the wind running through it lifts a gentle ripple that runs
+					// from the luff aft to the leech (the edges still, as ever)
+					const float drawK = std::clamp((sbFill_ - 0.25f) / 0.75f, 0.0f, 1.0f);
+					const float belly = a_fill * (0.08f + 0.92f * drawK);
+					const float slack = (std::max)(1.0f - drawK, 1.0f - a_fill) * a_hoist * a_hoist;
+					const float luffA = slack * (a_jib ? 1.6f : 2.2f) * std::clamp(sailFlap_, 0.3f, 1.5f) * (0.6f + 0.6f * std::clamp(a_wsp, 0.0f, 1.0f));
+					const float luff = luffA * m * (std::sin(2.6f * kPi * u - t0 * 4.2f + 1.1f * t) + 0.35f * std::sin(5.1f * kPi * u - t0 * 6.3f + 2.0f * t));
+					a_b.bone[i]->local.translate = RE::NiPoint3{ b.x * belly + d * a_fill + (fold + luff) * a_mir, y, z };
+				}
+			}
+		}
+		// v1.8.30d: where the jib is furled: lashed along the bowsprit (model space; SB_JibFurl), its sheet then lying slack
+		// from the bundle's aft end to the foot of the mast
+		// v1.8.30e: no, beside the mast (Miguel's picture): it hangs from a lashing on the mast's forward side (SB_JibFurlHang,
+		// at -2 97 362), 205 long, swaying as the boat rocks
+		static constexpr float kJibHangLen = 205.0f;
+		RE::NiAVObject* sbHang_{ nullptr };
+		RE::NiAVObject* sbStay_{ nullptr };      // v1.8.30f: the jib's tack line (hook to the bowsprit's end)
+		RE::NiAVObject* sbTackIron_{ nullptr };  // and its iron hook
+		RE::NiAVObject* sbCoil_{ nullptr };
+		float hangAx_{ 0.0f }, hangAy_{ 0.0f }, hangVx_{ 0.0f }, hangVy_{ 0.0f };
+		// v1.8.32b: the jib fades out as it comes in, gone halfway (hoisted 0.75 .. 0.5), its hanging bundle fading in as it goes
+		static float SbJibFadeA(float a_hoist)
+		{
+			const float e = std::clamp((a_hoist - 0.5f) / 0.25f, 0.0f, 1.0f);
+			return e * e * (3.0f - 2.0f * e);
+		}
+		float sbJibAShown_{ 1.0f };
+		static float SbJibStowK(float a_hoist)
+		{
+			const float e = std::clamp((1.0f - a_hoist) / 0.85f, 0.0f, 1.0f);
+			return e * e * (3.0f - 2.0f * e);
+		}
+		// the jib coming in: each bone carried from the sail toward its place on the bundle (the tack to the bowsprit's end,
+		// the clew aft along it), all of it there by the time the bundle shows
+		void SbJibStow(SbBones& a_b, float a_hoist)
+		{
+			if (!a_b.shape || !sbJib_ || a_b.rows < 2 || a_b.cols < 2 || a_hoist >= 0.999f || a_b.shape->GetAppCulled()) return;
+			if (!sbHang_) return;
+			const float e = SbJibStowK(a_hoist);
+			const RE::NiMatrix3 Rt = sbJib_->local.rotate.Transpose();
+			const RE::NiPoint3 T = sbJib_->local.translate;
+			const auto& H = sbHang_->local;  // v1.8.30e: onto the bundle hanging by the mast (the head up, the tack down)
+			for (int r = 0; r < a_b.rows; ++r)
+				for (int c = 0; c < a_b.cols; ++c) {
+					// v1.8.30h: each row of the sail to its height on the bundle, the row kept straight (no shear, no twist)
+					const float sAlong = 1.0f - static_cast<float>(r) / static_cast<float>(a_b.rows - 1);
+					(void)c;
+					const RE::NiPoint3 tm = H.translate + H.rotate * RE::NiPoint3{ 0.0f, 0.0f, -kJibHangLen * (0.04f + 0.92f * sAlong) };
+					const RE::NiPoint3 tl = Rt * (tm - T);
+					auto& p = a_b.bone[r * a_b.cols + c]->local.translate;
+					p = p + (tl - p) * e;
+				}
+		}
+		// v1.8.3: a clean reset of the bones' movement. Each frame every bone is placed fresh from its bind: the shape is
+		// worked out once as if the wind were on the right (starboard) and then mirrored as a whole for the left, so the
+		// left is the exact flip of the right. The edges never flap: the ripples, gusts, flutter and swing lag are faded
+		// to nothing at the luff, foot, head and leech (the outer ring of bones holds the plain belly), the middle of the
+		// sail does the moving.
+		void SbBend(SbBones& a_b, float a_side, float a_wsp, float a_luffK, bool a_jib)
+		{
+			if (!a_b.shape || a_b.rows < 3 || a_b.cols < 3) return;
+			const float t0 = sbT_;
+			const float ripA = (0.6f + 1.6f * a_wsp + 3.0f * a_luffK) * sailFlap_;
+			const float flA = (0.8f + 1.2f * a_wsp + 2.5f * a_luffK) * sailFlap_;
+			const float gust = (0.07f * std::sin(t0 * 0.55f) + 0.05f * std::sin(t0 * 1.37f + 1.1f)) * (std::min)(sailFlap_, 1.0f);
+			const float lag = std::clamp(sbLag_ * a_side, -8.0f, 8.0f) * (a_jib ? 0.6f : 1.0f);  // as seen from the right
+			for (int r = 0; r < a_b.rows; ++r) {
+				const float t = static_cast<float>(r) / static_cast<float>(a_b.rows - 1);
+				for (int c = 0; c < a_b.cols; ++c) {
+					const float u = static_cast<float>(c) / static_cast<float>(a_b.cols - 1);
+					const int i = r * a_b.cols + c;
+					const auto& b = a_b.bind[i];
+					// 0 on the edges, 1 in the middle (sin^1.5 both ways)
+					const float st = (std::max)(std::sin(kPi * t), 0.0f), su = (std::max)(std::sin(kPi * u), 0.0f);
+					const float m = std::pow(st * su, 1.5f);
+					float x = b.x * sbFill_;                                                  // the belly (right side)
+					x += b.x * gust * m;                                                     // breathing in the gusts
+					x += ripA * m * std::sin(2.2f * (u + 0.35f * t) * kPi - t0 * 3.1f);      // a slow wave across the cloth
+					x += flA * m * std::sin(4.5f * t - t0 * 7.3f + 1.7f * u);                // a quicker shiver up it
+					x += lag * m;                                                            // the cloth lagging the boom
+					a_b.bone[i]->local.translate = RE::NiPoint3{ a_side * x, b.y, b.z };     // the left: the right mirrored
+				}
+			}
+		}
+		RE::NiMatrix3 sbJibR0_{};
+		SbCloth sbMainC_{}, sbJibC_{};
+		float sbHoistMain_{ -1.0f }, sbHoistJib_{ -1.0f }, sbT_{ 0.0f }, sbFill_{ 1.0f }, sbLag_{ 0.0f };
+		static constexpr float kSbGaffDrop = 200.0f;  // the gaff's fall to the boom when stowed (model units)
+		static bool SbCacheCloth(RE::NiAVObject* a_obj, SbCloth& a_c, bool a_jib)
+		{
+			a_c = SbCloth{};
+			auto* d = a_obj ? a_obj->AsDynamicTriShape() : nullptr;
+			if (!d) return false;
+			auto& rd = d->GetDynamicTrishapeRuntimeData();
+			const auto nv = static_cast<int>(rd.dataSize / 16);
+			if (!rd.dynamicData || nv <= 0) return false;
+			{
+				RE::BSSpinLockGuard g(rd.lock);
+				const auto* f = static_cast<const float*>(rd.dynamicData);
+				a_c.base.resize(nv);
+				for (int i = 0; i < nv; ++i) a_c.base[i] = { f[i * 4], f[i * 4 + 1], f[i * 4 + 2] };
+			}
+			// the foot and head lines (lowest / highest point in each of 16 bands along the sail), the luff and leech by band too
+			float sx = 0.0f, lo = 1e9f, hi = -1e9f;
+			for (auto& p : a_c.base) { sx += p.x; const float a = a_jib ? p.z : -p.y; lo = (std::min)(lo, a); hi = (std::max)(hi, a); }
+			a_c.built = sx >= 0.0f ? 1.0f : -1.0f;
+			constexpr int kB = 16;
+			float bMin[kB], bMax[kB], cMin[kB], cMax[kB];
+			for (int b = 0; b < kB; ++b) { bMin[b] = cMin[b] = 1e9f; bMax[b] = cMax[b] = -1e9f; }
+			const float span = (std::max)(hi - lo, 1.0f);
+			auto band = [&](float a) { return std::clamp(static_cast<int>((a - lo) / span * kB), 0, kB - 1); };
+			// main (rig frame): along the boom is -y, up is z: bands along -y hold z's range; jib (its frame): along the luff is z, out to the clew is -y
+			for (auto& p : a_c.base) {
+				const int b = band(a_jib ? p.z : -p.y);
+				const float h = a_jib ? -p.y : p.z;
+				bMin[b] = (std::min)(bMin[b], h); bMax[b] = (std::max)(bMax[b], h);
+			}
+			for (int b = 0; b < kB; ++b) if (bMin[b] > bMax[b]) { bMin[b] = b ? bMin[b - 1] : 0.0f; bMax[b] = b ? bMax[b - 1] : 1.0f; }
+			float hLo = 1e9f, hHi = -1e9f;
+			for (auto& p : a_c.base) { const float h = a_jib ? -p.y : p.z; hLo = (std::min)(hLo, h); hHi = (std::max)(hHi, h); }
+			const float hs = (std::max)(hHi - hLo, 1.0f);
+			auto hband = [&](float h) { return std::clamp(static_cast<int>((h - hLo) / hs * kB), 0, kB - 1); };
+			for (auto& p : a_c.base) {
+				const int b = hband(a_jib ? -p.y : p.z);
+				const float a = a_jib ? p.z : -p.y;
+				cMin[b] = (std::min)(cMin[b], a); cMax[b] = (std::max)(cMax[b], a);
+			}
+			for (int b = 0; b < kB; ++b) if (cMin[b] > cMax[b]) { cMin[b] = b ? cMin[b - 1] : 0.0f; cMax[b] = b ? cMax[b - 1] : 1.0f; }
+			a_c.t.resize(nv); a_c.u.resize(nv);
+			for (int i = 0; i < nv; ++i) {
+				const auto& p = a_c.base[i];
+				const float a = a_jib ? p.z : -p.y, h = a_jib ? -p.y : p.z;
+				const int b = band(a), c = hband(h);
+				// main: t up from the boom to the gaff, u aft from the mast to the leech; jib: t up the luff, u out to the leech
+				if (a_jib) {
+					a_c.t[i] = std::clamp((p.z - lo) / span, 0.0f, 1.0f);
+					a_c.u[i] = std::clamp((h - bMin[b]) / (std::max)(bMax[b] - bMin[b], 1.0f), 0.0f, 1.0f);
+				} else {
+					a_c.t[i] = std::clamp((h - bMin[b]) / (std::max)(bMax[b] - bMin[b], 1.0f), 0.0f, 1.0f);
+					a_c.u[i] = std::clamp((a - cMin[c]) / (std::max)(cMax[c] - cMin[c], 1.0f), 0.0f, 1.0f);
+				}
+			}
+			a_c.shape = d;
+			return true;
+		}
+		void SbMoveCloth(SbCloth& a_c, bool a_jib, float a_hoist, float a_side, float a_wsp, float a_luffK)
+		{
+			if (!a_c.shape) return;
+			const bool show = a_hoist > 0.04f;
+			if (a_c.shape->GetAppCulled() == show) a_c.shape->SetAppCulled(!show);
+			if (!show) return;
+			auto& rd = a_c.shape->GetDynamicTrishapeRuntimeData();
+			if (!rd.dynamicData || rd.dataSize / 16 != a_c.base.size()) return;
+			const float t0 = sbT_;
+			const float gust = (0.07f * std::sin(t0 * 0.55f) + 0.05f * std::sin(t0 * 1.37f + 1.1f)) * (std::min)(sailFlap_, 1.0f);
+			// v1.7.98: the flapping back (as the skinned sails), times [Sail] Flap
+			const float ripA = (0.6f + 1.6f * a_wsp + 3.0f * a_luffK) * sailFlap_, flA = (1.0f + 1.5f * a_wsp + 3.5f * a_luffK) * sailFlap_;
+			const float bellyK = a_side * a_c.built * (sbFill_ + 0.0f) * (0.35f + 0.65f * a_hoist);
+			RE::BSSpinLockGuard g(rd.lock);
+			auto* f = static_cast<float*>(rd.dynamicData);
+			const auto n = a_c.base.size();
+			for (std::size_t i = 0; i < n; ++i) {
+				const auto& b = a_c.base[i];
+				const float t = a_c.t[i], u = a_c.u[i];
+				const float ss = std::sin(kPi * t), su = std::sin(kPi * u);
+				float x = b.x * (bellyK + gust * ss * a_side * a_c.built);
+				const float sx = a_side;  // v1.7.93: the ripples fade through the crossing too (they jumped sign at the middle)
+				x += sx * ripA * std::sin(7.0f * (u + 0.35f * t) * kPi - t0 * 3.1f) * su * ss;
+				x += sx * flA * u * u * u * std::sqrt((std::max)(ss, 0.0f)) * std::sin(16.0f * t - t0 * 7.3f + 1.7f * u);
+				x += sbLag_ * std::pow(u, 1.3f) * ss * (a_jib ? 0.6f : 1.0f);
+				float y = b.y, z = b.z;
+				if (a_jib) { y *= a_hoist; z *= a_hoist; x *= a_hoist; }   // gathered down the stay to the tack
+				else z -= t * (1.0f - a_hoist) * kSbGaffDrop;              // the cloth folds down with the gaff
+				f[i * 4] = x; f[i * 4 + 1] = y; f[i * 4 + 2] = z;
+			}
+		}
+		// ---- v1.8.8: the longship's square sail (RowRim_Longship.nif) ----
+		// LS_SailRig (at the mast foot) carries the yard, its robands and the sail. It is braced about the mast to the wind with
+		// the same wind and the same pendulum as the sailing boat's boom (slower: a heavy yard): square across running before
+		// the wind, braced round as the wind comes onto the beam (at most 50 deg), the windward yardarm aft. The sail is a
+		// thin solid, almost flat; it never flaps (RULES: no edge ever flaps). Jump while seated: stowed <-> full: the sail
+		// fades in or out over 1.5 s and the 24 oars are run in while it is set.
+		RE::NiAVObject* lsOn_{ nullptr };
+		RE::NiAVObject* lsRig_{ nullptr };
+		RE::NiAVObject* lsSail_{ nullptr };
+		RE::NiAVObject* lsOars_{ nullptr };
+		float lsHoist_{ -1.0f }, lsHoistShown_{ -1.0f };
+		// v1.8.9: the square sail skinned to an 8 x 8 bone grid (LS_SailBones, rows foot -> head, columns port -> starboard).
+		// Each frame every bone is placed fresh from its bind, moved fore and aft only (its rig y): the wind filling it out
+		// (and breathing in the gusts), a slow wave across, a quicker shiver up it (more when it luffs), all times
+		// [LongshipSail] Flap and faded to nothing at every edge: the yard, the foot and both leeches never flap.
+		SbBones lsB_{};
+		float lsT_{ 0.0f }, lsFill_{ 0.0f }, lsFillVel_{ 0.0f }, lsSideE_{ 0.0f }, lsLogT_{ 0.0f };
+		// v1.8.9k: the sail answers each wind. lsFill_ is signed: -1 taken aback (blown back against the mast) .. 0 luffing ..
+		// 1 running, blown full; on a spring, so the big cloth is slow to fill and swings a little past. Big and slow: flap
+		// about 1 Hz at most (was up to 6), and less the tauter the cloth. Every shape below is 0 at all four edges, and
+		// everything to one side is the exact mirror of the other (each pattern and its mirror crossfaded by the wind's side).
+		void LsFlap(float a_dt, float a_phi, float a_wsp, bool a_set)
+		{
+			if (!lsB_.shape || lsB_.rows < 3 || lsB_.cols < 3 || lsB_.shape->GetAppCulled()) { lsFill_ = lsFillVel_ = 0.0f; return; }
+			LoadSailTuning();
+			const float a = std::abs(a_phi);
+			auto ss = [](float e0, float e1, float x) { const float k = std::clamp((x - e0) / (e1 - e0), 0.0f, 1.0f); return k * k * (3.0f - 2.0f * k); };
+			float n = 0.0f;
+			if (a_set) n = a < 1.05f ? -0.75f * (1.0f - ss(0.52f, 1.05f, a)) : (0.8f * ss(1.05f, 2.0f, a) + 0.2f * ss(2.0f, kPi, a)) * (0.25f + 0.75f * SailMatch(a_phi));  // v1.8.9l: badly trimmed it spills the wind
+			lsFillVel_ += ((n - lsFill_) * 2.2f - lsFillVel_ * 2.0f) * a_dt;
+			lsFill_ += lsFillVel_ * a_dt;
+			const float depth = 70.0f + 110.0f * std::clamp(a_wsp * 2.0f, 0.0f, 1.0f);  // the deepest belly in this wind (units; the sail is 990 wide)
+			const float taut = (std::min)(std::abs(lsFill_), 1.0f);
+			const float luffK = a_set ? 1.0f - (std::min)(std::abs(n) / 0.5f, 1.0f) : 0.2f;
+			lsSideE_ += (std::clamp(std::sin(a_phi) * 3.0f, -1.0f, 1.0f) - lsSideE_) * (1.0f - std::exp(-1.5f * a_dt));  // + the wind blows toward starboard (from port)
+			lsT_ += a_dt * (0.6f + 0.8f * a_wsp + 0.7f * luffK);
+			if (lsT_ > 6283.0f) lsT_ -= 6283.0f;
+			const float t0 = lsT_;
+			const float slack = 1.0f - 0.55f * taut;
+			const float flapK = (std::min)(sailFlap_ / 0.6f, 1.5f);
+			const float ripA = (3.0f + 4.0f * a_wsp + 10.0f * luffK) * slack * sailFlap_;
+			const float flA = (1.0f + 2.0f * a_wsp + 5.0f * luffK) * slack * sailFlap_;
+			const float billowA = 14.0f * luffK * sailFlap_;
+			const float peak = 1.0f + 0.35f * std::abs(std::sin(a_phi));  // on a reach the belly sits to leeward
+			const float windP = (1.0f + lsSideE_) * 0.5f, windS = 1.0f - windP;  // v1.8.9l: blowing toward port uses the mirrored pattern
+			auto belly = [&](float u) { return std::pow((std::max)(std::sin(kPi * std::pow(u, peak)), 0.0f), 0.75f); };
+			auto wave = [&](float u, float t) {
+				float w = 0.08f * depth * taut * flapK * std::sin(t0 * 0.7f + 2.0f * u + 0.7f * t);  // the gust, running across
+				w += ripA * std::sin(2.2f * (u + 0.35f * t) * kPi - t0 * 2.2f);  // a slow wave across
+				w += flA * std::sin(4.5f * t - t0 * 4.2f + 1.7f * u);            // a quicker shiver up
+				w += billowA * std::sin(t0 * 1.1f + 1.5f * u + 1.2f * t);        // luffing: the whole cloth lifts and falls
+				return w;
+			};
+			for (int r = 0; r < lsB_.rows; ++r) {
+				const float t = static_cast<float>(r) / static_cast<float>(lsB_.rows - 1);
+				const float st = (std::max)(std::sin(kPi * t), 0.0f);
+				for (int c = 0; c < lsB_.cols; ++c) {
+					const float u = static_cast<float>(c) / static_cast<float>(lsB_.cols - 1);
+					const int i = r * lsB_.cols + c;
+					const float su = (std::max)(std::sin(kPi * u), 0.0f);
+					const float m = std::pow(st * su, 1.5f);
+					// blowing toward starboard: leeward is starboard (u 1), so its belly peaks there and its waves run that way
+					const float bm = (windP * belly(u) + windS * belly(1.0f - u)) * std::pow(st, 0.75f);
+					float d = lsFill_ * depth * bm;
+					d += m * (windP * wave(u, t) + windS * wave(1.0f - u, t));
+					const auto& b = lsB_.bind[i];
+					float y = b.y + d;
+					// blown back: the cloth drapes round the mast (rig y 0), never through it
+					if (d < 0.0f) y = (std::max)(y, (std::min)(b.y, 26.0f - 0.5f * (std::max)(std::abs(b.x) - 71.0f, 0.0f)));
+					lsB_.bone[i]->local.translate = RE::NiPoint3{ b.x, y, b.z };
+				}
+			}
+			if ((lsLogT_ -= a_dt) <= 0.0f) {
+				lsLogT_ = 3.0f;
+				logger::info("Sail: longship cloth: wind {:.0f} off the stern, fill {:.2f} (wants {:.2f}), belly {:.0f}, luff {:.2f}", a_phi * 57.2958f, lsFill_, n, lsFill_ * depth, luffK);
+			}
+		}
+		void TendLongSail(float a_dt)
+		{
+			if (lsOn_ != visual_.get()) {
+				lsOn_ = visual_.get();
+				lsRig_ = FindShape(visual_.get(), "LS_SailRig");
+				lsSail_ = FindShape(visual_.get(), "LS_Sail");
+				lsOars_ = FindShape(visual_.get(), "LS_Oars");
+				SbFindBones(visual_.get(), "LS_Sail", "LS_SailBones", 8, 8, lsB_);  // v1.8.9
+				logger::info("Sail: longship sail {}", lsB_.shape ? "skinned (flaps)" : "fixed (an older model)");
+				lsHoist_ = lsHoistShown_ = -1.0f;
+				logger::info("Sail: longship rig {} (sail {}, oars {})", lsRig_ ? "found" : "not in this model", lsSail_ ? "ok" : "none", lsOars_ ? "ok" : "none");
+			}
+			if (!lsRig_) return;
+			if (sail_ == 0) sail_ = 1;  // the mast is always up
+			if (sail_ == 3) sail_ = 2;  // no reefing: stowed or full
+			mastA_ = 1.0f;
+			const float dt = std::clamp(a_dt, 0.0f, 0.1f);
+			const float want = sail_ == 2 ? 1.0f : 0.0f;
+			if (lsHoist_ < 0.0f) lsHoist_ = want;
+			lsHoist_ = want > lsHoist_ ? (std::min)(want, lsHoist_ + dt / 1.5f) : (std::max)(want, lsHoist_ - dt / 1.5f);
+			if (lsSail_ && lsHoist_ != lsHoistShown_) {
+				lsHoistShown_ = lsHoist_;
+				const float e = lsHoist_ * lsHoist_ * (3.0f - 2.0f * lsHoist_);
+				if (lsSail_->GetAppCulled() != (e <= 0.0f)) lsSail_->SetAppCulled(e <= 0.0f);
+				if (e > 0.0f) SetAlphaTree(lsSail_, e);
+			}
+			if (lsOars_) {
+				const bool hide = true;  // v1.8.26: the oars removed (were run in under sail)
+				if (lsOars_->GetAppCulled() != hide) lsOars_->SetAppCulled(hide);
+			}
+			float phi = 0.0f, wsp = 0.0f;
+			SailWind(phi, wsp);
+			const bool set = sail_ >= 2;
+			float target = 0.0f;
+			if (set) {
+				// phi: where the wind blows, off the stern (+ from starboard). Dead astern: square (0). Toward the beam: braced
+				// round, the windward yardarm aft (wind from starboard: the starboard end aft = a turn to port, negative here)
+				const float side = phi >= 0.0f ? 1.0f : -1.0f;
+				target = -side * (std::min)((kPi - std::abs(phi)) * 0.6f, 0.87f);
+				sailSide_ = side;
+			}
+			TendTrim(dt, phi, set, 0.87f, target);  // v1.8.9l
+			sailWasSet_ = set;
+			sailYawVel_ += ((target - sailYaw_) * 3.0f - sailYawVel_ * 2.4f) * dt;
+			sailYawVel_ = std::clamp(sailYawVel_, -0.6f, 0.6f);  // about 35 deg/s at most
+			sailYaw_ = std::clamp(sailYaw_ + sailYawVel_ * dt, -0.87f, 0.87f);
+			lsRig_->local.rotate = RzM(-sailYaw_);  // as the boom: + turns the starboard end forward
+			LsFlap(dt, phi, wsp, set);  // v1.8.9
+			RE::NiUpdateData data{};
+			data.flags.set(RE::NiUpdateData::Flag::kDirty);
+			lsRig_->Update(data);
+		}
+		void TendSailBoat(float a_dt)
+		{
+			if (Kind() == kKindLong) { TendLongSail(a_dt); return; }  // v1.8.8
+			if (sbOn_ != visual_.get()) {
+				sbOn_ = visual_.get();
+				sbMain_ = FindShape(visual_.get(), "SB_MainRig");
+				sbGaff_ = FindShape(visual_.get(), "SB_Gaff");
+				sbJib_ = FindShape(visual_.get(), "SB_JibRig");
+				sbHal_ = FindShape(visual_.get(), "SB_Halyards");
+				{
+					const char* nm[4] = { "SB_SailMainS", "SB_SailMainP", "SB_SailJibS", "SB_SailJibP" };
+					for (int i = 0; i < 4; ++i) sbSails_[i] = FindShape(visual_.get(), nm[i]);
+				}
+				SbFindBones(visual_.get(), "SB_SailMain", "SB_SailMainBones", 8, 8, sbMainB_);  // v1.7.99: 8x8 (was 5x5)
+				SbFindBones(visual_.get(), "SB_SailJib", "SB_SailJibBones", 8, 6, sbJibB_);  // v1.7.99: 8x6 (was 5x4)
+				{  // v1.8.4: one skinned sail per side (the original mesh and its mirror), shown as the static ones were
+					const char* sh[4] = { "SB_SailMainS", "SB_SailMainP", "SB_SailJibS", "SB_SailJibP" };
+					const char* bx[4] = { "SB_SailMainSBones", "SB_SailMainPBones", "SB_SailJibSBones", "SB_SailJibPBones" };
+					for (int k = 0; k < 4; ++k) SbFindBones(visual_.get(), sh[k], bx[k], 8, k < 2 ? 8 : 6, sbSideB_[k]);
+					sbClew_ = FindShape(visual_.get(), "SB_JibClew");  // v1.8.7
+					sbSheet_ = FindShape(visual_.get(), "SB_JibSheet");
+					sbRing_ = FindShape(visual_.get(), "SB_JibClewRing");
+					sbSheetB_[0] = FindShape(visual_.get(), "SB_JibSheetBone0");
+					sbSheetB_[1] = FindShape(visual_.get(), "SB_JibSheetBone1");
+					auto* bxo = FindShape(visual_.get(), "SB_JibSheetBones");
+					sbSheetBox_ = bxo ? bxo->AsNode() : nullptr;
+					if (!sbClew_ || !sbSheet_ || !sbSheetB_[0] || !sbSheetB_[1] || !sbSheetBox_) { sbSheet_ = nullptr; }
+					logger::info("Sail: jib sheet {}", sbSheet_ ? "found" : "not in this model");
+					logger::info("Sail: per-side skinned sails {} ({} {} {} {} bones)", sbSideB_[0].shape ? "found" : "none", sbSideB_[0].bone.size(),
+						sbSideB_[1].bone.size(), sbSideB_[2].bone.size(), sbSideB_[3].bone.size());
+				}
+				logger::info("Sail: sailing boat sails {} (main {} bones, jib {} bones)", sbMainB_.shape && sbJibB_.shape ? "skinned" : "fixed", sbMainB_.bone.size(), sbJibB_.bone.size());
+				if (sbJib_) sbJibR0_ = sbJib_->local.rotate;
+				const bool m = SbCacheCloth(FindShape(visual_.get(), "SB_SailMain"), sbMainC_, false);
+				const bool j = SbCacheCloth(FindShape(visual_.get(), "SB_SailJib"), sbJibC_, true);
+				sbHoistMain_ = sbHoistJib_ = -1.0f;
+				logger::info("Sail: sailing boat rig {} (main cloth {}, jib cloth {}, gaff {}, jib rig {})", sbMain_ ? "found" : "not in this model", m ? "ok" : "none",
+					j ? "ok" : "none", sbGaff_ ? "ok" : "none", sbJib_ ? "ok" : "none");
+				if (!sbMain_) { sbGaff_ = sbJib_ = sbHal_ = nullptr; for (auto& q : sbSails_) q = nullptr; sbMainB_ = sbJibB_ = SbBones{}; for (auto& q : sbSideB_) q = SbBones{}; sbClew_ = sbSheet_ = sbRing_ = nullptr; }
+			}
+			if (!sbMain_) return;
+			if (sail_ == 0) sail_ = 1;  // this boat's mast is always up
+			// v1.8.29: reefing back (Sprint at the helm: stowed, full, reefed): the main part way up, no jib
+			mastA_ = 1.0f;
+			const float dt = std::clamp(a_dt, 0.0f, 0.1f);
+			// hoisting: stowed 0, full 1, reefed: the main part way and no jib
+			const float wantM = sail_ == 2 ? 1.0f : sail_ == 3 ? 0.55f : 0.0f;
+			const float wantJ = (sail_ == 2 || sail_ == 3) ? 1.0f : 0.0f;  // v1.8.30: the jib stays set when the main is reefed
+			if (sbHoistMain_ < 0.0f) { sbHoistMain_ = wantM; sbHoistJib_ = wantJ; }
+			auto toward = [&](float& v, float w) { const float k = dt * 0.3f; v = v < w ? (std::min)(w, v + k) : (std::max)(w, v - k); };  // v1.8.30: 3 s from full to stowed
+			toward(sbHoistMain_, wantM);
+			toward(sbHoistJib_, wantJ);
+			// the lee side, crossfaded through flat as the boom crosses (as the lug sail's starboard / port sets)
+			// v1.7.93: only once the boom is well over (9 deg), and more slowly: with the boom wobbling round the centre (head to
+			// wind, running straight downwind) the belly flipped side to side every few frames: the flicker
+			{
+				const float want = sailYaw_ > 0.15f ? 1.0f : sailYaw_ < -0.15f ? 0.0f : sailSideW_;
+				// v1.8.5: 1.4 s across (the per-side sails empty to flat and fill out again on the other side over it)
+				sailSideW_ = std::clamp(sailSideW_ + (want > sailSideW_ ? 1.0f : want < sailSideW_ ? -1.0f : 0.0f) * dt / 1.4f, 0.0f, 1.0f);
+			}
+			float phi = 0.0f, wsp = 0.0f;
+			SailWind(phi, wsp);
+			const bool set = sail_ >= 2;
+			float target = 0.0f;
+			if (set) {
+				const float side = phi >= 0.0f ? 1.0f : -1.0f;
+				if (!sailWasSet_) sailSide_ = side;
+				if (side != sailSide_ && std::abs(phi) > kPi - 0.44f) target = sailSide_ * 1.5708f;
+				else {
+					if (side != sailSide_) logger::info("Sail: {} (wind {:.0f} deg off the stern), boom to {}", std::abs(phi) > 1.5708f ? "gybe" : "tack", phi * 57.2958f, side > 0.0f ? "starboard" : "port");
+					sailSide_ = side;
+					target = side * (std::min)(std::abs(phi) * 0.5f, 1.5708f);
+				}
+			}
+			TendTrim(dt, phi, set, 1.5708f, target);  // v1.8.9l
+			sailWasSet_ = set;
+			const bool luff = set && std::abs(phi) < 0.5f;
+			sailShiver_ += dt * (luff ? 11.0f : 0.0f);
+			LoadSailTuning();
+			LoadSailTuning();
+			const float shiver = luff ? 0.05f * sailFlap_ * (0.4f + wsp) * std::sin(sailShiver_) * (1.0f - std::abs(phi) / 0.5f) : 0.0f;  // v1.7.96: back
+			sailYawVel_ += ((target - sailYaw_) * 5.0f - sailYawVel_ * 2.2f) * dt;
+			sailYawVel_ = std::clamp(sailYawVel_, -1.1f, 1.1f);
+			sailYaw_ = std::clamp(sailYaw_ + sailYawVel_ * dt, -1.5708f, 1.5708f);
+			// v1.8.39: the boom's jaw sits on the lower mast (axis -5.14 74.05), the gaff's on the topmast (-1.98 83): the rig turns
+			// about the line through both jaws, so each stays on its own mast either side (about the topmast's axis alone the
+			// boom's jaw swung 15 clear of the lower mast to starboard). + still swings the boom to starboard.
+			{
+				constexpr float kAx = -1.98f - -5.14f, kAy = 83.0f - 74.05f, kAz = 377.0f - 150.0f;
+				const float al = std::sqrt(kAx * kAx + kAy * kAy + kAz * kAz);
+				const RE::NiPoint3 A{ -5.14f, 74.05f, 150.0f };
+				if (sbMainT0On_ != sbMain_) { sbMainT0On_ = sbMain_; sbMainT0_ = sbMain_->local.translate; }
+				const RE::NiMatrix3 R = AxisM(kAx / al, kAy / al, kAz / al, sailYaw_ + shiver);
+				sbMain_->local.rotate = R;
+				sbMain_->local.translate = A + R * (sbMainT0_ - A);
+			}
+			// v1.8.30h: the jib held in by its sheet, as a real one is: it follows the boom closely in close, but never goes
+			// out past about 32 degrees, however far the main is let out
+			if (sbJib_) {
+				constexpr float kJibOut = 0.56f;
+				const float jy = kJibOut * std::tanh(sailYaw_ * 0.8f / kJibOut);
+				sbJib_->local.rotate = sbJibR0_ * RzM(-(jy + shiver));
+			}
+			// v1.8.31: the rudder on the sternpost (SB_RudderRig, at the hinge's foot) swings its blade to the side you steer
+			// (26 degrees at most), the tiller (SB_TillerRig, its post through the stern bench) the other way, eased
+			{
+				if (sbRudderOn_ != visual_.get()) {
+					sbRudderOn_ = visual_.get();
+					sbRudder_ = FindShape(visual_.get(), "SB_RudderRig");
+					sbTiller_ = FindShape(visual_.get(), "SB_TillerRig");
+				}
+				const float want = (seated_ && seatKind_ == SeatKind::kHelm) ? helmSteer_ * 0.45f : 0.0f;
+				// v1.8.41/42: with the helm clip, the tiller goes where his hand is (v1.8.43: measured in TillerHelm, after the boat
+				// is placed; first person or before it is known, the timed turn)
+				if (helmAnimOn_ && !helmPoseWarned_) rudderA_ = helmHandLive_ ? helmHandA_ : helmTillerA_;
+				else rudderA_ += (want - rudderA_) * (1.0f - std::exp(-3.0f * dt));
+				if (sbRudder_) sbRudder_->local.rotate = AxisM(0.0f, -0.65636f, 0.75445f, std::clamp(rudderA_, -0.45f, 0.45f));  // the sternpost's line (v1.8.44: never past its 26 deg)
+				if (sbTiller_) sbTiller_->local.rotate = AxisM(0.0f, 0.0f, 1.0f, rudderA_ * 0.8f);
+				RE::NiUpdateData ud{};
+				ud.flags.set(RE::NiUpdateData::Flag::kDirty);
+				if (sbRudder_) sbRudder_->Update(ud);
+				if (sbTiller_) sbTiller_->Update(ud);
+			}
+			if (sbGaff_) sbGaff_->local.translate = RE::NiPoint3{ 0.0f, 0.0f, -(1.0f - sbHoistMain_) * kSbGaffDrop };
+			// v1.8.30: the rolled and tied bundles: the main's on the boom (reefed: the foot rolled thinner, its reef points),
+			// the jib's round its stay; each rises out of the boom / comes up round the stay as the cloth comes in
+			{
+				if (sbFurlOn_ != visual_.get()) {
+					sbFurlOn_ = visual_.get();
+					const char* fn[6] = { "SB_MainFurl", "SB_MainFurlTies", "SB_MainReef", "SB_MainReefTies", "SB_JibFurl", "SB_JibFurlWrap" };
+					for (int i = 0; i < 6; ++i) sbFurl_[i] = FindShape(visual_.get(), fn[i]);
+					sbHang_ = FindShape(visual_.get(), "SB_JibFurlHang");
+					sbStay_ = FindShape(visual_.get(), "SB_JibTack");
+					sbTackIron_ = FindShape(visual_.get(), "SB_JibTackIron");
+					sbCoil_ = FindShape(visual_.get(), "SB_JibCoil");
+				}
+				// v1.8.30c: furled as Miguel's reference (the cloth hanging under its spar in swags between rope ties); the bundles
+				// stay as they are, the sails warp down onto them and are gone once they are in
+				const float h = sbHoistMain_;
+				const bool furl = h < 0.18f;
+				const bool reef = false;  // v1.8.30d: reefed, no bundle (the reefed sail as it is)
+				const bool jib = sbHoistJib_ < 0.15f;
+				const float jibA = SbJibFadeA(sbHoistJib_);
+				const bool on[3] = { furl, reef, jibA < 0.999f };  // v1.8.32b: the jib's bundle fades in as the sail fades out
+				for (int g = 0; g < 3; ++g)
+					for (int j = 0; j < 2; ++j) {
+						if (g == 2 && j == 1) continue;  // v1.8.32d: the jib's wraps: shown by the fade below, once the sail is half gone
+						if (auto* o = sbFurl_[g * 2 + j]; o && o->GetAppCulled() == on[g]) o->SetAppCulled(!on[g]);
+					}
+				// v1.8.30e: furled, the jib's tack line is taken off and coiled on the bowsprit (v1.8.30f: that line and its hook;
+				// the forestay stays up)
+				if (sbStay_ && sbStay_->GetAppCulled() != jib) sbStay_->SetAppCulled(jib);
+				if (sbTackIron_ && sbTackIron_->GetAppCulled() != jib) sbTackIron_->SetAppCulled(jib);
+				if (sbCoil_ && sbCoil_->GetAppCulled() == jib) sbCoil_->SetAppCulled(!jib);
+				// the hanging jib sways as the boat rocks: it keeps hanging plumb, a little late, and swings past
+				if (sbHang_) {
+					const float tx = -pitch_, ty = -roll_;
+					hangVx_ += (14.0f * (tx - hangAx_) - 1.6f * hangVx_) * dt;
+					hangVy_ += (14.0f * (ty - hangAy_) - 1.6f * hangVy_) * dt;
+					hangAx_ = std::clamp(hangAx_ + hangVx_ * dt, -0.35f, 0.35f);
+					hangAy_ = std::clamp(hangAy_ + hangVy_ * dt, -0.35f, 0.35f);
+					sbHang_->local.rotate = RxM(hangAx_) * RyM(hangAy_);
+					RE::NiUpdateData hu{};
+					sbHang_->Update(hu);
+				}
+				// v1.8.30e: stowed, the gaff comes to rest upright against the mast (turned about its jaw)
+				if (sbGaff_) {
+					const float g0 = std::clamp((0.2f - h) / 0.2f, 0.0f, 1.0f), g = g0 * g0 * (3.0f - 2.0f * g0);
+					const RE::NiMatrix3 R = RxM(-0.766f * g);
+					const RE::NiPoint3 jaw{ 0.9f, -10.0f, 385.0f };
+					sbGaff_->local.rotate = R;
+					sbGaff_->local.translate = jaw - R * jaw + RE::NiPoint3{ 0.0f, 0.0f, -(1.0f - sbHoistMain_) * kSbGaffDrop };
+				}
+			}
+			if (sbHal_) { const bool h = sbHoistMain_ < 0.97f; if (sbHal_->GetAppCulled() != h) sbHal_->SetAppCulled(h); }
+			// the cloth: as the lug sail's (MoveCloth): fill with the wind, empty head to wind, gusts, ripples, flutter, lag
+			const float a = std::abs(phi);
+			const float draw = (!set ? 0.0f : a < 0.5f ? 0.0f : a < 1.2f ? (a - 0.5f) / 0.7f : 1.0f) * (0.25f + 0.75f * SailMatch(phi));  // v1.8.9l
+			const float want = set ? 0.25f + 0.75f * draw * (0.6f + 0.4f * std::clamp(wsp * 2.5f, 0.0f, 1.0f)) : 0.3f;
+			sbFill_ += (want - sbFill_) * (1.0f - std::exp(-1.5f * dt));
+			sbLag_ += (std::clamp(-sailYawVel_ * 9.0f, -10.0f, 10.0f) - sbLag_) * (1.0f - std::exp(-4.0f * dt));
+			const float luffK = set ? 1.0f - draw : 0.3f;
+			sbT_ += dt * (1.0f + 2.0f * wsp + 2.5f * luffK);
+			if (sbT_ > 6283.0f) sbT_ -= 6283.0f;
+			const float side = sailSideW_ * 2.0f - 1.0f;
+			SbMoveCloth(sbMainC_, false, sbHoistMain_, side, wsp, luffK);  // (an older model with cloth shapes)
+			SbMoveCloth(sbJibC_, true, sbHoistJib_, side, wsp, luffK);
+			// v1.7.95: the sails are thin solids, built bellied to starboard and to port: the lee one shown once hoisted (the
+			// moving cloth flickered in the renderer)
+			if (!sbSideB_[0].shape) {  // (v1.8.5: the per-side skinned sails show themselves, below)
+				const bool stbd = sailSideW_ >= 0.5f;
+				const bool show[4] = { sbHoistMain_ >= 0.98f && stbd, sbHoistMain_ >= 0.98f && !stbd, sbHoistJib_ >= 0.98f && stbd, sbHoistJib_ >= 0.98f && !stbd };
+				for (int i = 0; i < 4; ++i)
+					if (sbSails_[i] && sbSails_[i]->GetAppCulled() == show[i]) sbSails_[i]->SetAppCulled(!show[i]);
+			}
+			// v1.7.96: the skinned sails: shown once hoisted, bent by their bones (the belly crossfades through flat as the
+			// boom crosses: side runs -1..1 with sailSideW_)
+			{
+				const SbBones* bs[2] = { &sbMainB_, &sbJibB_ };
+				const float hoist[2] = { sbHoistMain_, sbHoistJib_ };
+				for (int k = 0; k < 2; ++k) {
+					auto* sh = bs[k]->shape;
+					if (!sh) continue;
+					const bool show = hoist[k] >= 0.98f;
+					if (sh->GetAppCulled() == show) sh->SetAppCulled(!show);
+				}
+				SbBend(sbMainB_, side, wsp, luffK, false);
+				SbBend(sbJibB_, side, wsp, luffK, true);
+				// v1.8.4: the per-side sails keep their mesh as made and only flap around it (the lee one is shown above)
+				// v1.8.5: the change of side is a transition, not a swap: the lee sail empties (its belly eases to flat), then
+				// the other side's sail takes over at flat and fills out (side -1 port .. +1 starboard, eased)
+				const float e = std::abs(side), fillK = e * e * (3.0f - 2.0f * e);
+				const bool stbdNow = side >= 0.0f;
+				for (int k = 0; k < 4; ++k) {
+					auto* sh = sbSideB_[k].shape;
+					if (!sh) continue;
+					const bool mine = (k & 1) ? !stbdNow : stbdNow;
+					// v1.8.29: the main reefed too; v1.8.30: both shown while they come in (the main gathered down onto the boom, the
+					// jib rolled round its stay) until the rolled bundles take over
+					const bool show = mine && (k < 2 ? sbHoistMain_ > 0.06f : SbJibFadeA(sbHoistJib_) > 0.001f);  // v1.8.32b: the jib gone halfway in
+					if (sh->GetAppCulled() == show) sh->SetAppCulled(!show);
+					SbFlap(sbSideB_[k], (k & 1) ? -1.0f : 1.0f, wsp, luffK, k >= 2, k >= 2 ? fillK * (1.0f - SbJibStowK(sbHoistJib_)) : fillK, k < 2 ? sbHoistMain_ : sbHoistJib_);  // v1.8.30h: the jib's belly empties as it comes in
+					if (k >= 2) SbJibStow(sbSideB_[k], sbHoistJib_);  // v1.8.30d: the jib brought down onto the bowsprit
+				}
+			}
+			// v1.8.32b: the jib fades out as it comes in (gone halfway), its hanging bundle fading in over the same stretch.
+			// v1.8.32d: only shapes with textures of their own are faded (the game shares one material between shapes with the
+			// same textures: fading the rope wraps faded every rope): the jib (BoatFabric02_jib_d) and its bundle
+			// (BoatFabric02_jibfurl_d). The wraps and the clew ring are only shown or hidden.
+			{
+				const float a = SbJibFadeA(sbHoistJib_);
+				if (a != sbJibAShown_ || (a > 0.0f && a < 1.0f)) {
+					for (int k = 2; k < 4; ++k)
+						if (sbSideB_[k].shape) SetAlphaTree(sbSideB_[k].shape, a);
+					if (sbFurl_[4]) SetAlphaTree(sbFurl_[4], 1.0f - a);
+					sbJibAShown_ = a;
+				}
+				if (auto* wrap = sbFurl_[5]) {
+					const bool on = a < 0.5f;
+					if (wrap->GetAppCulled() == on) wrap->SetAppCulled(!on);
+				}
+			}
+			// v1.8.7: the jib sheet: from the jib's clew (the corner by the mast, swinging with the jib) to the mast (v1.8.27e;
+			// was a fairlead on the gunwale); shown with the jib, as its clew ring
+			// v1.8.29: the boom's and gaff's jaw knots and iron as made with the boom to port, mirrored with it to starboard
+			{
+				if (sbJawOn_ != visual_.get()) {
+					sbJawOn_ = visual_.get();
+					const char* jn[4] = { "SB_JawRopeS", "SB_JawRopeP", "SB_JawIronS", "SB_JawIronP" };
+					for (int i = 0; i < 4; ++i) sbJaw_[i] = FindShape(visual_.get(), jn[i]);
+				}
+				const bool stbd = sailSideW_ >= 0.5f;
+				for (int i = 0; i < 4; ++i) {
+					if (!sbJaw_[i]) continue;
+					const bool show = (i & 1) ? stbd : !stbd;
+					if (sbJaw_[i]->GetAppCulled() == show) sbJaw_[i]->SetAppCulled(!show);
+				}
+			}
+			if (sbRing_) {
+				const bool show = SbJibFadeA(sbHoistJib_) > 0.001f;  // v1.8.32b: fading with the jib
+				if (sbRing_->GetAppCulled() == show) sbRing_->SetAppCulled(!show);
+			}
+			if (sbSheet_ && sbJib_) {
+				const bool show = sbHoistJib_ > 0.15f;  // v1.8.30e: in with the jib, then tied up in its bundle
+				if (sbSheet_->GetAppCulled() == show) sbSheet_->SetAppCulled(!show);
+				if (show) {
+					const auto& jl = sbJib_->local;
+					const RE::NiPoint3 cl{ 0.0f, sbClew_->local.translate.y, sbClew_->local.translate.z };
+					const RE::NiPoint3 clew = jl.rotate * cl + jl.translate;
+					sbSheetB_[1]->local.translate = clew;
+					// v1.8.27e: tied to the mast (was a fairlead on the gunwale); the clew end through the iron ring (SB_JibClewRing)
+					// v1.8.30h: tied to the iron eye on the mast's forward side above the boom (Miguel's picture; was the
+					// lashing higher up at z 276)
+					sbSheetB_[0]->local.translate = RE::NiPoint3{ -2.6f, 97.0f, 187.0f };
+					{
+						const float e = SbJibStowK(sbHoistJib_);  // v1.8.30d: coming in with the jib to rest
+						const RE::NiPoint3 foot = sbHang_ ? sbHang_->local.translate + sbHang_->local.rotate * RE::NiPoint3{ 0.0f, 0.0f, -kJibHangLen } : clew;
+						sbSheetB_[1]->local.translate = clew + (foot - clew) * e;
+					}
+					// v1.8.32: the sheet is a round rope bound along +z (0..100): both its bones turned onto its line, so its
+					// section is always square to it (moved only, it went flat)
+					{
+						const RE::NiMatrix3 R = TurnOnto(RE::NiPoint3{ 0.0f, 0.0f, 1.0f }, sbSheetB_[1]->local.translate - sbSheetB_[0]->local.translate);
+						sbSheetB_[0]->local.rotate = R;
+						sbSheetB_[1]->local.rotate = R;
+					}
+					RE::NiUpdateData sd{};
+					sbSheetBox_->Update(sd);
+				}
+			}
+			// v1.8.32: the jib's tack line and its hook follow the sail's tack (its corner on the forestay) a little: the hook
+			// carried with the corner and turned with the jib, the line swung about its far end on the bowsprit (-1.8 406 116)
+			if ((sbStay_ || sbTackIron_) && sbJib_) {
+				const SbBones& jb = sbSideB_[sailSideW_ >= 0.5f ? 2 : 3];
+				if (jb.shape && !jb.bone.empty() && !jb.bind.empty() && jb.bone[0]) {
+					const auto& jl = sbJib_->local;
+					const RE::NiPoint3 rest = sbJibR0_ * jb.bind[0] + jl.translate;
+					const RE::NiPoint3 now = jl.rotate * jb.bone[0]->local.translate + jl.translate;
+					RE::NiUpdateData ud{};
+					ud.flags.set(RE::NiUpdateData::Flag::kDirty);
+					if (sbTackIron_) {
+						const RE::NiMatrix3 Rd = jl.rotate * sbJibR0_.Transpose();
+						sbTackIron_->local.rotate = Rd;
+						sbTackIron_->local.translate = now - Rd * rest;
+						sbTackIron_->Update(ud);
+					}
+					if (sbStay_) {
+						const RE::NiPoint3 A{ -1.8f, 406.0f, 116.0f };
+						const RE::NiMatrix3 Rs = TurnOnto(rest - A, now - A);
+						sbStay_->local.rotate = Rs;
+						sbStay_->local.translate = A - Rs * A;
+						sbStay_->Update(ud);
+					}
+				}
+			}
+			RE::NiUpdateData data{};
+			data.flags.set(RE::NiUpdateData::Flag::kDirty);
+			sbMain_->Update(data);
+			if (sbJib_) sbJib_->Update(data);
+		}
+		// ---- v1.8.29: the sailing boat's anchor (src\Anchor_v1829.md) ----
+		// SB_Anchor (the iron anchor), its line: SB_AnchorRope + SB_AnchorChain skinned to 31 bones (SB_AnchorBones):
+		// 0..24 the rope from the cathead, 24..30 a short chain, 30 at the ring. The line is simulated in the world (verlet,
+		// heavy and slow in the water, never through the sea bed); the bones are placed from it each frame.
+		// Stowed: catted and fished on the starboard bow (the ring at the cathead, the shank along the hull). At the helm
+		// Jump drops it (too deep: a note, nothing happens); it falls, the rope paying out, and once it lies on the bottom
+		// the boat is held: after a moment it stops (no sail drive), and it never drifts further than the line. Jump again
+		// hauls it up and stows it.
+		static constexpr int kAnN = 31, kAnC0 = 24;
+		static constexpr float kAnChain = 40.0f;      // the chain (model units)
+		static constexpr float kAnMaxRope = 560.0f;   // v1.8.33: the boat is held once this much is out (model units: 700 in game at 1.25, 10 m)
+		static constexpr float kAnLineMax = 4200.0f;  // v1.8.33: the whole line: it goes on down to the bottom (75 m)
+		static inline const RE::NiPoint3 kAnCat{ 39.0f, 232.0f, 98.0f };      // the cathead: starboard bow, over the gunwale
+		static inline const RE::NiPoint3 kAnStowRing{ 41.0f, 230.0f, 93.0f };  // stowed: the ring just under it
+		static inline const RE::NiPoint3 kAnStowCrown{ 63.0f, 176.0f, 76.0f }; // and the crown aft along the hull's side
+		RE::NiAVObject* anOn_{ nullptr };
+		RE::NiAVObject* anNode_{ nullptr };
+		RE::NiAVObject* anRopeS_{ nullptr };
+		RE::NiAVObject* anChainS_{ nullptr };
+		RE::NiAVObject* anStowRope_{ nullptr };  // v1.8.39: SB_BowRopeStow, the cathead to the stowed ring (the line in)
+		RE::NiAVObject* anBone_[kAnN]{};
+		RE::NiAVObject* anBox_{ nullptr };
+		int anState_{ 0 };  // 0 stowed, 2 falling, 3 on the bottom (holding), 4 hauling up
+		bool anInit_{ false };
+		RE::NiPoint3 anP_[kAnN]{}, anQ_[kAnN]{};  // world, this step and the last
+		float anRope_{ 0.0f };   // rope paid out (world units)
+		float anBed_{ 0.0f };    // the sea bed under the drop (world z)
+		float anHold_{ 0.0f };   // seconds on the bottom
+		float anDownT_{ 0.0f };  // v1.8.35: seconds it has been going down (hauled up in as long)
+		float anHaulRate_{ 0.0f };  // v1.8.35: rope a second, hauling
+		float anStow_{ 1.0f };   // 0..1 into the stowed pose (eased as it is brought in)
+		RE::NiPoint3 anHoldRing_{};
+		RE::NiPoint3 anLieDir_{ 0.0f, 1.0f, 0.0f };
+		RE::NiPoint3 anZ_{};       // v1.8.29d: the hanging anchor's shank, eased
+		RE::NiMatrix3 anLastR_{};  // v1.8.39: its turn last frame, in the boat's frame
+		bool anHaveR_{ false };
+		RE::NiPoint3 anRingL_{};    // v1.8.39b: the last of the haul: the ring carried with the boat (no more dangling)
+		bool anRingLOn_{ false };
+		bool anOnBed_{ false };    // v1.8.29e: held on the bottom (else hanging at the end of its line)
+		float anDrive_{ 1.0f };    // v1.8.29d: how much the sail may drive (0 at anchor, slowly back once it is up)
+		double anKeyAt_{ 0.0 };
+		static RE::NiMatrix3 AnFrame(const RE::NiPoint3& a_z, const RE::NiPoint3& a_xHint)
+		{
+			// a rotation whose local +z is a_z and local +x as near a_hint as it can (columns: the local axes in the parent)
+			RE::NiPoint3 z = a_z; const float zl = z.Length(); z = zl > 1e-5f ? z / zl : RE::NiPoint3{ 0.0f, 0.0f, 1.0f };
+			RE::NiPoint3 x = a_xHint - z * a_xHint.Dot(z);
+			if (x.Length() < 1e-3f) { x = RE::NiPoint3{ 1.0f, 0.0f, 0.0f } - z * z.x; if (x.Length() < 1e-3f) x = RE::NiPoint3{ 0.0f, 1.0f, 0.0f } - z * z.y; }
+			x = x / x.Length();
+			const RE::NiPoint3 y = z.Cross(x);
+			return MakeMat(x.x, y.x, z.x, x.y, y.y, z.y, x.z, y.z, z.z);
+		}
+	public:
+		bool AnchorKeys() const { return seated_ && Kind() == kKindSail && anNode_ != nullptr; }  // Jump: the anchor, Sprint: the sail
+		bool AnchorHolding() const { return anState_ == 3 && anHold_ > 1.2f; }
+		void OnAnchorKey()
+		{
+			if (!AnchorKeys() || !visual_) return;
+			const double now = NowS();
+			if (now - anKeyAt_ < 0.6) return;
+			anKeyAt_ = now;
+			if (anState_ == 0) {
+				if (!haveWater_) return;
+				const auto& W = visual_->world;
+				const RE::NiPoint3 cat = W * kAnCat;
+				const float sc = W.scale;
+				// v1.8.29e: it holds at the end of its 10 m of line whether it reaches the bottom or not; a shallower bottom stops it there
+				// v1.8.33: it goes on down to the bottom (75 m of line), the boat held once 10 m are out
+				const RE::NiPoint3 from{ cat.x + 10.0f, cat.y, waterZ_ - 5.0f }, to{ cat.x + 10.0f, cat.y, waterZ_ - (kAnLineMax + kAnChain) * sc * 1.2f };
+				float frac = 1.0f; RE::COL_LAYER layer{};
+				anBed_ = FeelSweep(from, to, frac, layer) ? from.z + (to.z - from.z) * frac : -1.0e9f;
+				anState_ = 2; anHold_ = 0.0f; anDownT_ = 0.0f;
+				if (anBed_ > -1.0e8f) logger::info("Anchor: let go, the bottom {:.0f} under the water", waterZ_ - anBed_);
+				else logger::info("Anchor: let go, no bottom within its line: it holds hanging at the end of it");
+			} else if (anState_ == 2 || anState_ == 3) {
+				// v1.8.35: hauled up in as long as it took to go down (let go by mistake, it is back as quickly)
+				anState_ = 4;
+				anHaulRate_ = anRope_ / std::clamp(anDownT_, 0.6f, 30.0f);
+				logger::info("Anchor: hauling up ({:.0f} of rope out, {:.1f} s down: {:.0f} a second)", anRope_, anDownT_, anHaulRate_);
+			} else if (anState_ == 4) {
+				anState_ = 2; anHold_ = 0.0f;
+				anDownT_ = anHaulRate_ > 1.0f ? anRope_ / anHaulRate_ : 0.0f;  // as far down as it still is
+				logger::info("Anchor: let go again");
+			}
+		}
+	private:
+		void TendAnchor(float a_dt)
+		{
+			if (Kind() != kKindSail || !visual_) { anOn_ = anNode_ = nullptr; anInit_ = false; anState_ = 0; anRope_ = 0.0f; return; }
+			if (anOn_ != visual_.get()) {
+				anOn_ = visual_.get(); anInit_ = false; anHaveR_ = false;
+				anNode_ = FindShape(visual_.get(), "SB_Anchor");
+				anRopeS_ = FindShape(visual_.get(), "SB_AnchorRope");
+				anChainS_ = FindShape(visual_.get(), "SB_AnchorChain");
+				anBox_ = FindShape(visual_.get(), "SB_AnchorBones");
+				anStowRope_ = FindShape(visual_.get(), "SB_BowRopeStow");
+				bool ok = anNode_ && anRopeS_ && anChainS_ && anBox_;
+				for (int i = 0; i < kAnN && ok; ++i) ok = (anBone_[i] = FindShape(visual_.get(), std::format("SB_AnchorBone{}", i))) != nullptr;
+				logger::info("Anchor: {}", ok ? "found (anchor, rope, chain, 31 bones)" : "not in this model");
+				if (!ok) anNode_ = nullptr;
+			}
+			if (!anNode_) return;
+			const float dt = std::clamp(a_dt, 0.0f, 0.05f);
+			const auto& W = visual_->world;
+			const RE::NiTransform inv = W.Invert();
+			const float sc = W.scale > 0.01f ? W.scale : 1.0f;
+			const RE::NiPoint3 cat = W * kAnCat;
+			const RE::NiPoint3 stowRing = W * kAnStowRing;
+			const float chainW = kAnChain * sc, holdW = kAnMaxRope * sc, maxW = kAnLineMax * sc;  // v1.8.33: held at 10 m, the line runs on
+			const float water = haveWater_ ? waterZ_ : -1.0e9f;
+			if (!anInit_) {
+				anInit_ = true;
+				const RE::NiPoint3 end = anState_ == 3 ? anHoldRing_ : stowRing;
+				for (int i = 0; i < kAnN; ++i) {
+					const float f = static_cast<float>(i) / static_cast<float>(kAnN - 1);
+					anP_[i] = anQ_[i] = cat + (end - cat) * f;
+				}
+				if (anState_ == 0) anRope_ = 0.0f;
+			}
+			RE::NiPoint3& ring = anP_[kAnN - 1];
+			// the rope: paid out as the anchor falls, kept a little slack on the bottom, hauled in
+			const float span = (ring - cat).Length();
+			if (anState_ == 2) {
+				anDownT_ += dt;
+				// v1.8.29d/e: the first 10 m paid out freely as it falls (the rope uncoiling in the water); v1.8.35: past that only as
+				// much as it needs (it kept paying out 450 a second, far more line than the depth)
+				if (anRope_ < holdW) anRope_ = (std::min)((std::max)(anRope_ + 450.0f * sc * dt, span * 1.08f - chainW), holdW);
+				else anRope_ = (std::max)(anRope_, span * 1.02f - chainW);
+				anRope_ = std::clamp(anRope_, 0.0f, maxW);
+			}
+			else if (anState_ == 3) anRope_ = std::clamp((std::max)(anRope_, span * 1.06f - chainW), 0.0f, maxW);
+			else if (anState_ == 4) {
+				// v1.8.29e: hauled in steadily (10 m in about 5 s); v1.8.33: the last few feet slowly, easing it up into its place
+				// v1.8.39b: the last 240 (about 4 m) far slower still: down to a tenth, creeping the last bit in
+				const float e = std::clamp(anRope_ / (240.0f * sc), 0.0f, 1.0f), nearK = e * e * (3.0f - 2.0f * e);
+				const float rate = anHaulRate_ > 1.0f ? (std::max)(anHaulRate_, 60.0f * sc) : 150.0f * sc;  // v1.8.35: as fast as it went down
+				anRope_ = (std::max)(0.0f, anRope_ - (std::max)(rate * (0.1f + 0.9f * nearK), 10.0f * sc) * dt);
+			}
+			else anRope_ = 0.0f;
+			if (anState_ == 4 && anRope_ <= 0.0f && span < chainW + 6.0f * sc) { anState_ = 0; anStow_ = 0.0f; logger::info("Anchor: stowed"); }
+			anStow_ = anState_ == 0 ? (std::min)(1.0f, anStow_ + dt / 1.8f) : 0.0f;  // v1.8.33: settling into its place slowly (was 0.6 s)
+			const float ropeSeg = anRope_ / static_cast<float>(kAnC0), chainSeg = chainW / static_cast<float>(kAnN - 1 - kAnC0);
+			// v1.8.39b: the last of the haul (under 240 of rope) the ring no longer dangles on the light line: it is carried with
+			// the boat, eased slowly from where it hung up to its stowed place under the cathead
+			const float kin0 = anState_ == 4 ? 1.0f - std::clamp(anRope_ / (240.0f * sc), 0.0f, 1.0f) : 0.0f;
+			const bool ringKin = kin0 > 0.0f;
+			RE::NiPoint3 ringKinW = stowRing;
+			if (ringKin) {
+				if (!anRingLOn_) { anRingL_ = inv * ring; anRingLOn_ = true; }
+				const float k = kin0 * kin0 * (3.0f - 2.0f * kin0);
+				const RE::NiPoint3 hangL = inv * (cat + RE::NiPoint3{ 0.0f, 0.0f, -(anRope_ + chainW) * 0.95f });
+				const RE::NiPoint3 tgt = hangL + (kAnStowRing - hangL) * k;
+				anRingL_ = anRingL_ + (tgt - anRingL_) * (1.0f - std::exp(-1.2f * dt));
+				ringKinW = W * anRingL_;
+			} else anRingLOn_ = false;
+			const bool ringPinned = anState_ == 3 || (anState_ == 0 && anStow_ >= 1.0f) || ringKin;
+			// the line: verlet, two steps
+			for (int sub = 0; sub < 2; ++sub) {
+				const float h = dt * 0.5f;
+				for (int i = 1; i < kAnN; ++i) {
+					auto& p = anP_[i]; auto& q = anQ_[i];
+					RE::NiPoint3 v = p - q;
+					const bool wet = p.z < water;
+					// v1.8.29d: heavier, less dangly; v1.8.29e: the rope free to bend and drift (the chain and anchor still damped)
+					const bool iron = i >= kAnC0;
+					v = v * std::exp(-(iron ? (wet ? 6.0f : 2.5f) : (wet ? 2.0f : 0.6f)) * h);
+					float g = 690.0f * sc;  // 9.8 m/s2
+					if (wet) g = i == kAnN - 1 ? 380.0f * sc : (i >= kAnC0 ? 220.0f * sc : 110.0f * sc);  // the iron sinks, the rope slowly (v1.8.29e: it sags)
+					if (i == kAnN - 1 && wet) { const float vl = v.Length(), vmax = 300.0f * sc * h; if (vl > vmax) v = v * (vmax / vl); }  // its sinking pace
+					q = p;
+					p = p + v + RE::NiPoint3{ 0.0f, 0.0f, -g * h * h };
+				}
+				anP_[0] = cat;
+				if (ringPinned) { ring = anState_ == 3 ? anHoldRing_ : ringKin ? ringKinW : stowRing; anQ_[kAnN - 1] = ring; }
+				else if (anState_ == 0) ring = ring + (stowRing - ring) * (1.0f - std::exp(-(1.2f + 4.0f * anStow_ * anStow_) * h));  // brought in to the stowed spot, gently (v1.8.33)
+				for (int it = 0; it < 8; ++it) {  // v1.8.29e: fewer passes: a softer, bendier rope (was 20)
+					for (int i = 0; i < kAnN - 1; ++i) {
+						auto& a = anP_[i]; auto& b = anP_[i + 1];
+						const float rest = i < kAnC0 ? ropeSeg : chainSeg;
+						RE::NiPoint3 dd = b - a; const float l = dd.Length();
+						if (l < 1e-4f) continue;
+						const float wa = i == 0 ? 0.0f : 1.0f;
+						const float wb = (i + 1 == kAnN - 1) ? (ringPinned ? 0.0f : 0.25f) : 1.0f;
+						if (wa + wb <= 0.0f) continue;
+						const RE::NiPoint3 corr = dd * ((l - rest) / l / (wa + wb));
+						a = a + corr * wa; b = b - corr * wb;
+					}
+					if (anState_ >= 2) for (int i = 1; i < kAnN; ++i) if (anP_[i].z < anBed_ + 1.0f) anP_[i].z = anBed_ + 1.0f;  // never through the bottom
+				}
+			}
+			// on the bottom, or at the end of its line (v1.8.29e): it holds there
+			const bool onBed = ring.z <= anBed_ + 15.0f * sc;
+			if (anState_ == 2 && (onBed || (anRope_ >= maxW - 0.5f && span >= (maxW + chainW) * 0.9f))) {
+				anState_ = 3; anOnBed_ = onBed;  // v1.8.33: the hold already running from 10 m on keeps its time
+				anHoldRing_ = onBed ? RE::NiPoint3{ ring.x, ring.y, anBed_ + 15.0f * sc } : ring;
+				RE::NiPoint3 lie = cat - ring; lie.z = 0.0f;
+				anLieDir_ = lie.Length() > 1.0f ? lie / lie.Length() : RE::NiPoint3{ 0.0f, 1.0f, 0.0f };
+				logger::info("Anchor: {}, {:.0f} of rope out", onBed ? "on the bottom" : "at the end of its line", anRope_);
+			}
+			// v1.8.33: the boat is held once 10 m of line are out, the anchor going on down to the bottom
+			const bool held = anState_ == 3 || (anState_ == 2 && anRope_ >= holdW - 0.5f);
+			if (held) {
+				anHold_ += dt;
+				if (anState_ == 3) {
+					// on the bottom: never further than the line, and once it bites (a moment after it lands) she comes to a stop
+					RE::NiPoint3 d = cat - anHoldRing_; d.z = 0.0f;
+					const float L = anRope_ + chainW;
+					const float reach = std::sqrt((std::max)(0.0f, L * L - (cat.z - anHoldRing_.z) * (cat.z - anHoldRing_.z)));
+					const float dl = d.Length();
+					if (dl > reach && dl > 1.0f) { pos_.x -= d.x / dl * (dl - reach); pos_.y -= d.y / dl * (dl - reach); speed_ *= 0.9f; }
+				}
+				if (anHold_ > 1.2f) {
+					speed_ *= std::exp(-1.8f * dt);
+					if (std::abs(speed_) < 3.0f) speed_ = 0.0f;
+					sailLee_ *= std::exp(-2.0f * dt);
+					turn_ *= std::exp(-1.2f * dt);
+				}
+			}
+			// the anchor itself, in the world
+			RE::NiMatrix3 R;
+			RE::NiPoint3 crown;
+			const RE::NiPoint3 up{ 0.0f, 0.0f, 1.0f };
+			if (anState_ == 3 && anOnBed_) {
+				// lying on the bottom, the shank toward the boat and a little up, the lower fluke dug in
+				const RE::NiPoint3 z = anLieDir_ * 0.978f + up * 0.208f;
+				R = AnFrame(z, up);
+				crown = anHoldRing_ - z * (62.0f * sc);
+				crown.z = (std::max)(crown.z, anBed_ + 2.0f * sc);
+			} else {
+				RE::NiPoint3 z = anP_[kAnN - 2] - ring;  // hanging: the shank up the line
+				if (z.Length() < 0.5f) z = up;
+				z = z / z.Length();
+				// v1.8.29d: a heavy anchor turns slowly with its line (it swung about with every twitch of the chain)
+				// v1.8.39: the last of the haul (under about 2 m of rope) it settles: its shank follows the line more and more
+				// slowly and it turns, the short way and smoothly, toward its stowed hang (it spun round as it came in)
+				const float s0 = kin0;  // v1.8.39b: over the last 240
+				const float settle = s0 * s0 * (3.0f - 2.0f * s0);
+				if (anZ_.Length() < 0.5f) anZ_ = z;
+				anZ_ = anZ_ + (z - anZ_) * (1.0f - std::exp(-3.0f * (1.0f - 0.8f * settle) * dt));
+				z = anZ_.Length() > 1e-3f ? anZ_ / anZ_.Length() : up;
+				const RE::NiMatrix3 hang = AnFrame(z, RE::NiPoint3{ W.rotate.entry[0][0], W.rotate.entry[1][0], W.rotate.entry[2][0] });
+				// stowed: catted and fished along the starboard bow (the ring at the cathead, the arms up and down)
+				const RE::NiPoint3 sr = W * kAnStowRing, sc0 = W * kAnStowCrown;
+				const RE::NiMatrix3 stow = AnFrame(sr - sc0, RE::NiPoint3{ W.rotate.entry[0][2], W.rotate.entry[1][2], W.rotate.entry[2][2] });
+				const RE::NiMatrix3 last = W.rotate * anLastR_;
+				if (anState_ == 0) {
+					// from wherever it was, eased into its place over the 1.8 s (slowly at first): never a lerp of two far-apart turns
+					// v1.8.39b: at most 20 deg a second, and on until it is there (no snap at the end of the 1.8 s)
+					R = (!anHaveR_ || TurnBetween(last, stow) < 0.004f) ? stow : SlerpCapM(last, stow, 1.0f - std::exp(-(0.8f + 2.0f * anStow_) * dt), 0.35f * dt);
+				} else if (anState_ == 4) {
+					const RE::NiMatrix3 want = settle > 0.0f ? SlerpM(hang, stow, 0.9f * settle) : hang;
+					// v1.8.39b: never a quick turn: 70 deg a second at most while it comes up, 20 over the last of it
+					R = anHaveR_ ? SlerpCapM(last, want, 1.0f - std::exp(-(4.0f - 3.0f * settle) * dt), (1.2f - 0.85f * settle) * dt) : want;
+				} else R = hang;
+				crown = ring - RE::NiPoint3{ R.entry[0][2], R.entry[1][2], R.entry[2][2] } * (62.0f * sc);
+			}
+			anNode_->local.rotate = inv.rotate * R;
+			anLastR_ = inv.rotate * R;
+			anHaveR_ = true;
+			anNode_->local.translate = inv * crown;
+			anNode_->local.scale = 1.0f;
+			// the line's bones, in the model
+			RE::NiPoint3 m[kAnN];
+			for (int i = 0; i < kAnN; ++i) m[i] = inv * anP_[i];
+			for (int i = 0; i < kAnN; ++i) {
+				const RE::NiPoint3 dir = i < kAnN - 1 ? m[i + 1] - m[i] : m[i] - m[i - 1];
+				anBone_[i]->local.translate = m[i];
+				anBone_[i]->local.rotate = AnFrame(RE::NiPoint3{ -dir.x, -dir.y, -dir.z }, RE::NiPoint3{ 1.0f, 0.0f, 0.0f });  // the bind runs down -z
+			}
+			const bool ropeOut = anRope_ > 2.0f * sc;
+			if (anRopeS_->GetAppCulled() == ropeOut) anRopeS_->SetAppCulled(!ropeOut);
+			// v1.8.39: the line from the bow bitt is always there; stowed, its short drop from the cathead to the ring
+			if (anStowRope_ && anStowRope_->GetAppCulled() != ropeOut) anStowRope_->SetAppCulled(ropeOut);
+			// v1.8.29d: stowed, the chain is in (hidden): no loop of it swinging under the cathead
+			const bool chainOut = !(anState_ == 0 && anStow_ >= 1.0f);
+			if (anChainS_->GetAppCulled() == chainOut) anChainS_->SetAppCulled(!chainOut);
+			// the sail: nothing at anchor, a little while it is hauled (it drags), then back slowly once it is up (12 s)
+			{
+				const float want = held ? 0.0f : anState_ == 4 ? 0.1f : anState_ == 2 ? 0.5f : 1.0f;  // v1.8.33: none once held
+				anDrive_ = want < anDrive_ ? (std::max)(want, anDrive_ - dt * 2.0f) : (std::min)(want, anDrive_ + dt / 12.0f);
+			}
+			RE::NiUpdateData ud{};
+			ud.flags.set(RE::NiUpdateData::Flag::kDirty);
+			anNode_->Update(ud);
+			anBox_->Update(ud);
+		}
+		void TendSail(float a_dt)
+		{
+			if (!visual_) { lsB_ = SbBones{}; lsOn_ = lsRig_ = lsSail_ = lsOars_ = nullptr; sailOn_ = sailNode_ = sailRig_ = nullptr; for (auto& c : cloth_) c = SailCloth{}; sbOn_ = sbMain_ = sbGaff_ = sbJib_ = sbHal_ = nullptr; for (auto& q : sbSails_) q = nullptr; sbMainB_ = sbJibB_ = SbBones{}; for (auto& q : sbSideB_) q = SbBones{}; sbClew_ = sbSheet_ = sbRing_ = nullptr; sbMainC_ = sbJibC_ = SbCloth{}; return; }
+			SailLoad();
+			if (Kind() == kKindRow) sail_ = 0;  // v1.8.21: a swap back to the rowboat brings no sail with it
+			if (sailOn_ != visual_.get()) {
+				sailOn_ = visual_.get();
+				sailNode_ = FindShape(visual_.get(), "RowRim_Sail");
+				sailRig_ = FindShape(visual_.get(), "RowRim_SailRig");
+				const char* st[5] = { "RowRim_SailFurled", "RowRim_SailFull", "RowRim_SailReefed", "RowRim_SailFullP", "RowRim_SailReefedP" };
+				for (int i = 0; i < 5; ++i) { sailSt_[i] = FindShape(visual_.get(), st[i]); sailStShown_[i] = -1.0f; }
+				for (int i = 0; i < kSheetN; ++i) sailSheet_[i] = FindShape(visual_.get(), std::format("RowRim_SailSheet{}", i));
+				FindCloth();
+				logger::info("Sail: {} in the hull", sailNode_ && sailRig_ && sailSt_[0] && sailSt_[1] && sailSt_[2] ? "mast and sail found" : "no mast (an older hull)");
+				if (!sailRig_ || !sailSt_[0] || !sailSt_[1] || !sailSt_[2] || !sailSt_[3] || !sailSt_[4]) sailNode_ = nullptr;
+				mastA_ = -1.0f;  // re-applied below
+			}
+			if (!sailNode_) { TendSailBoat(a_dt); return; }  // v1.7.90: no lug sail: the sailing boat's own rig, if this is it
+			const float dt = std::clamp(a_dt, 0.0f, 0.1f);
+			const float k = dt / 1.2f;
+			const float mastBefore = mastA_;
+			mastA_ = std::clamp((mastA_ < 0.0f ? (sail_ > 0 ? 1.0f : 0.0f) : mastA_) + (sail_ > 0 ? k : -k), 0.0f, 1.0f);
+			bool fading = mastA_ != mastBefore || (mastA_ > 0.0f && mastA_ < 1.0f);
+			for (int i = 0; i < 3; ++i) {
+				const float b = sailStA_[i];
+				sailStA_[i] = std::clamp(sailStA_[i] + (sail_ == i + 1 ? k : -k), 0.0f, 1.0f);
+				fading = fading || b != sailStA_[i] || (sailStA_[i] > 0.0f && sailStA_[i] < 1.0f);
+			}
+			if (mastA_ <= 0.0f) {
+				if (mastBefore > 0.0f || mastBefore < 0.0f) SetAlphaTree(sailNode_, 1.0f);
+				if (!sailNode_->GetAppCulled()) sailNode_->SetAppCulled(true);
+				return;
+			}
+			if (sailNode_->GetAppCulled()) sailNode_->SetAppCulled(false);
+			auto ease = [](float a) { return a >= 1.0f ? 1.0f : a * a * (3.0f - 2.0f * a); };
+			// v1.7.78: the starboard or the port set by where the boom is (crossfaded as it crosses the centre)
+			{
+				const float want = sailYaw_ > 0.03f ? 1.0f : sailYaw_ < -0.03f ? 0.0f : sailSideW_;
+				const float b = sailSideW_;
+				sailSideW_ = std::clamp(sailSideW_ + (want > sailSideW_ ? 1.0f : want < sailSideW_ ? -1.0f : 0.0f) * dt / 0.35f, 0.0f, 1.0f);
+				if (b != sailSideW_ && (sailSideW_ == 0.0f || sailSideW_ == 1.0f)) logger::info("Sail: the cloth now on the {} side", sailSideW_ > 0.5f ? "starboard" : "port");
+			}
+			if (fading) SetAlphaTree(sailNode_, ease(mastA_));
+			{
+				const float m = ease(mastA_);
+				const float a5[5] = { m * ease(sailStA_[0]), m * ease(sailStA_[1]) * sailSideW_, m * ease(sailStA_[2]) * sailSideW_,
+					m * ease(sailStA_[1]) * (1.0f - sailSideW_), m * ease(sailStA_[2]) * (1.0f - sailSideW_) };
+				for (int i = 0; i < 5; ++i) {
+					if (!fading && a5[i] == sailStShown_[i]) continue;
+					sailStShown_[i] = a5[i];
+					sailSt_[i]->SetAppCulled(a5[i] <= 0.0f);
+					if (a5[i] > 0.0f) SetAlphaTree(sailSt_[i], a5[i]);
+				}
+			}
+			// the wind the boat feels (SailWind)
+			float phi = 0.0f, wsp = 0.0f;
+			SailWind(phi, wsp);
+			float target = 0.0f;
+			const bool set = sail_ >= 2;
+			// v1.7.77: the boom keeps its side through small wobbles round dead downwind: it gybes only once the wind is 25 deg
+			// past dead astern on the other quarter (the flip back and forth as you steered), and then swings across slowly
+			if (set) {
+				const float side = phi >= 0.0f ? 1.0f : -1.0f;
+				if (!sailWasSet_) sailSide_ = side;  // v1.7.78: raised: straight to the lee side (it started on starboard)
+				if (side != sailSide_ && std::abs(phi) > kPi - 0.44f) target = sailSide_ * 1.5708f;  // by the lee: held
+				else {
+					if (side != sailSide_) logger::info("Sail: {} (wind {:.0f} deg off the stern), boom to {}", std::abs(phi) > 1.5708f ? "gybe" : "tack", phi * 57.2958f, side > 0.0f ? "starboard" : "port");
+					sailSide_ = side;
+					target = side * (std::min)(std::abs(phi) * 0.5f, 1.5708f);  // v1.7.79: out to 90 deg dead downwind
+				}
+			}
+			sailWasSet_ = set;
+			// luffing: head to wind the cloth shivers (a little to and fro about the centre)
+			const bool luff = set && std::abs(phi) < 0.5f;
+			sailShiver_ += dt * (luff ? 11.0f : 0.0f);
+			LoadSailTuning();
+			const float shiver = luff ? 0.05f * sailFlap_ * (0.4f + wsp) * std::sin(sailShiver_) * (1.0f - std::abs(phi) / 0.5f) : 0.0f;
+			sailYawVel_ += ((target - sailYaw_) * 5.0f - sailYawVel_ * 2.2f) * dt;  // a pendulum: lags, overshoots a little
+			sailYawVel_ = std::clamp(sailYawVel_, -1.1f, 1.1f);  // v1.7.77: no faster than about 60 deg/s
+			sailYaw_ = std::clamp(sailYaw_ + sailYawVel_ * dt, -1.5708f, 1.5708f);
+			sailRig_->local.rotate = RzM(-(sailYaw_ + shiver));  // + swings the boom to starboard
+			MoveCloth(dt, phi, wsp, set);  // v1.7.83
+			// v1.7.75: the sheet from the boom's end to the cleat by the helm, a gentle sag, laid as pieces end to end (each
+			// overlaps the next: it never stretches or gaps). Sail node space (origin the mast step).
+			{
+				const RE::NiPoint3 clew = sailRig_->local.rotate * RE::NiPoint3{ 7.5f, -150.0f, 189.5f };
+				const RE::NiPoint3 cleat{ 60.0f, -190.0f - kSailY, 75.0f };
+				const RE::NiPoint3 span = cleat - clew;
+				const float sag = 4.0f + 0.015f * span.Length();
+				auto at = [&](float t) { return clew + span * t - RE::NiPoint3{ 0.0f, 0.0f, sag * 4.0f * t * (1.0f - t) }; };
+				for (int i = 0; i < kSheetN; ++i) {
+					auto* piece = sailSheet_[i];
+					if (!piece) continue;
+					const RE::NiPoint3 p0 = at(static_cast<float>(i) / kSheetN), p1 = at(static_cast<float>(i + 1) / kSheetN);
+					RE::NiPoint3 y = p1 - p0;
+					const float l = y.Length();
+					y = l > 0.001f ? y / l : RE::NiPoint3{ 0.0f, 1.0f, 0.0f };
+					RE::NiPoint3 x{ y.y, -y.x, 0.0f };  // y x up
+					const float lx = x.Length();
+					x = lx > 0.001f ? x / lx : RE::NiPoint3{ 1.0f, 0.0f, 0.0f };
+					const RE::NiPoint3 z{ x.y * y.z - x.z * y.y, x.z * y.x - x.x * y.z, x.x * y.y - x.y * y.x };
+					auto& m = piece->local.rotate;
+					m.entry[0][0] = x.x; m.entry[0][1] = y.x; m.entry[0][2] = z.x;
+					m.entry[1][0] = x.y; m.entry[1][1] = y.y; m.entry[1][2] = z.y;
+					m.entry[2][0] = x.z; m.entry[2][1] = y.z; m.entry[2][2] = z.z;
+					piece->local.translate = (p0 + p1) * 0.5f;
+				}
+			}
+			RE::NiUpdateData data{};
+			data.flags.set(RE::NiUpdateData::Flag::kDirty);
+			sailNode_->Update(data);
+		}
+
 		float bagA_{ 0.0f };  // v1.7.49: the bed fades in when laid out and out when packed up (1.2 s)
 		void TendSleepingBag(float a_dt)
 		{
@@ -1559,8 +3777,9 @@ namespace
 			}
 			picks_[kPickBoard].base->SetModel(stat->GetModel());
 			picks_[kPickBoard].base->boundData = stat->boundData;
+			s_boardPickKind = -1;  // v1.8.26: set to the boat's own again
 			benchModel_ = benchModel->GetModel();
-			for (int k = kPickSteer; k <= kPickSupplies; ++k) {
+			for (int k = kPickSteer; k <= kPickSail; ++k) {
 				if (!picks_[k].base) continue;
 				picks_[k].base->SetModel(benchModel_.c_str());
 				picks_[k].base->boundData = bench->boundData;
@@ -1574,7 +3793,7 @@ namespace
 			benchScale_[kPickSteer] = std::clamp(70.0f / len, 0.2f, 3.0f);
 			benchScale_[kPickRow] = std::clamp(130.0f / len, 0.2f, 3.0f);
 			benchScale_[kPickBedroll] = std::clamp(45.0f / len, 0.1f, 3.0f);  // v1.7.11: the roll is about 45 across
-			benchScale_[kPickSupplies] = std::clamp(40.0f / len, 0.1f, 3.0f);  // v1.7.23: the supplies, about 40 across
+			benchScale_[kPickSail] = std::clamp(28.0f / len, 0.1f, 3.0f);      // v1.7.73: round the mast, chest high
 			logger::info("Pick: prompts ready (hull '{}', seats '{}' {:.0f} x {:.0f}, scale {:.2f} / {:.2f})", stat->GetModel(), benchModel_, dx, dy,
 				benchScale_[kPickSteer], benchScale_[kPickRow]);
 		}
@@ -1601,6 +3820,25 @@ namespace
 			auto* root = a_ref->Get3D();
 			return root && (root->world.translate - a_at).Length() > 8.0f;
 		}
+		// v1.8.8b: the Board prompt's proxy takes the boat's own hull shape (its collision model, a hair bigger) and name: the
+		// rowboat-shaped one sat inside the longship and the crosshair hit the longship's own hull first
+		static inline int s_boardPickKind = -1;  // v1.8.26: the prompt's base is shared by the three boats
+		std::string boardName_;
+		void BoardPickFor(RE::TESObjectREFR* a_hull)
+		{
+			auto& pk = picks_[kPickBoard];
+			if (!pk.base || s_boardPickKind == Kind()) return;
+			auto* hb = a_hull ? a_hull->GetBaseObject() : nullptr;
+			auto* hm = hb ? hb->As<RE::TESModel>() : nullptr;
+			if (!hm || !hm->GetModel() || !*hm->GetModel()) return;
+			s_boardPickKind = Kind();
+			pk.base->SetModel(hm->GetModel());
+			pk.base->boundData = hb->boundData;
+			boardName_ = Dims().label;
+			pk.base->fullName = boardName_.c_str();
+			if (pk.h) DropPick(pk);
+			logger::info("Pick: Board prompt is the {} ('{}')", Dims().label, hm->GetModel());
+		}
 		void TendPick(PickProxy& a_p, int a_kind, bool a_want, const RE::NiPoint3& a_at, float a_yaw)
 		{
 			auto ref = a_p.h.get();
@@ -1613,7 +3851,7 @@ namespace
 				// v1.7.50: once the boat is still, a proxy that was carried more than 30 from where it was placed, or whose 3D
 				// is not where it should be, is placed fresh: carried along by
 				// SetPosition its collision could stay behind (the [E] found somewhere else in the boat after rowing)
-				else if (std::abs(speed_) < 5.0f && ((a_at - a_p.placedAt).Length() > 30.0f || PickStale(ref.get(), a_at))) {
+				else if (std::abs(speed_) < 5.0f && ((a_kind == kPickBoard ? std::hypot(a_at.x - a_p.placedAt.x, a_at.y - a_p.placedAt.y) > 8.0f : (a_at - a_p.placedAt).Length() > 30.0f) || PickStale(ref.get(), a_at))) {
 					DropPick(a_p);
 					ref = nullptr;
 				}
@@ -1642,7 +3880,11 @@ namespace
 			}
 			if (ref && a_p.set && std::abs(speed_) < 5.0f && --a_p.check <= 0) {  // v1.7.50: still: checked once a second
 				a_p.check = 10;
-				if ((a_at - a_p.placedAt).Length() > 30.0f || PickStale(ref.get(), a_at)) { DropPick(a_p); return; }
+				// v1.8.35: the Board prompt (the whole hull) re-placed once carried more than 8: its collision could stay where it
+				// was placed, so looking at the hull found nothing
+				// (across the water only: it bobs up and down on the waves all the time)
+				const float moved = a_kind == kPickBoard ? std::hypot(a_at.x - a_p.placedAt.x, a_at.y - a_p.placedAt.y) : (a_at - a_p.placedAt).Length();
+				if (moved > (a_kind == kPickBoard ? 8.0f : 30.0f) || PickStale(ref.get(), a_at)) { DropPick(a_p); return; }
 			}
 			if (a_p.set) return;
 			auto* root = ref->Get3D();
@@ -1659,6 +3901,10 @@ namespace
 		{
 			if ((pickTick_ -= a_dt) > 0.0f) return;
 			pickTick_ = 0.1f;
+			if (!IsActive()) {  // v1.8.26: only the boat in use shows prompts
+				for (auto& pk : picks_) if (pk.h) DropPick(pk);
+				return;
+			}
 			if (!picksInit_) InitPicks();
 			if (!picksOk_) return;
 			auto* player = RE::PlayerCharacter::GetSingleton();
@@ -1668,26 +3914,21 @@ namespace
 				for (auto& pk : picks_) if (pk.h) DropPick(pk);
 				return;
 			}
-			if (seated_) {  // v1.7.24: no prompts while seated (no fishing from the seat)
+			if (seated_) {  // v1.7.24: no prompts while seated
 				for (auto& pk : picks_) if (pk.h) DropPick(pk);
 				return;
 			}
-			// v1.7.23: the fishing supplies' prompt
 			const float by = yaw_ + benchYawOff_;
-			RE::NiPoint3 sup{};
-			bool supOut = picks_[kPickSupplies].base && Gear::SuppliesSpot(sup);
 			auto nearL = [&](const RE::NiPoint3& a_l) {  // v1.7.28: the gear prompts only within reach (90 across the deck)
 				const RE::NiPoint3 l = PlayerLocal(player);
 				return std::hypot(l.x - a_l.x, l.y - a_l.y) < 120.0f;  // v1.7.49: 120
 			};
-			supOut = supOut && nearL(sup);
-			TendPick(picks_[kPickSupplies], kPickSupplies, supOut, lastAt_ + lastRot_ * RE::NiPoint3{ sup.x, sup.y, sup.z + 6.0f }, by);
 			if (picksSweep_) {
 				picksSweep_ = false;
 				int n = 0;
 				if (auto* tes = RE::TES::GetSingleton()) {
 					tes->ForEachReferenceInRange(player, 3000.0f, [&](RE::TESObjectREFR* a_ref) {
-						if (a_ref && (a_ref->GetFormID() >> 24) == 0xFF && !a_ref->IsDeleted() && !IsPickRef(a_ref->GetFormID())) {
+						if (a_ref && (a_ref->GetFormID() >> 24) == 0xFF && !a_ref->IsDeleted() && !IsOursAny(a_ref->GetFormID())) {
 							auto* b = a_ref->GetBaseObject();
 							for (const auto& pk : picks_) {
 								if (b && b == pk.base) { a_ref->Disable(); a_ref->SetDelete(true); ++n; break; }
@@ -1699,23 +3940,26 @@ namespace
 				if (n) logger::info("Pick: {} prompt activator(s) from the save removed", n);
 			}
 			const float hy = hull->GetAngle().z;
+			BoardPickFor(hull);  // v1.8.8b
 			TendPick(picks_[kPickBoard], kPickBoard, !PlayerAboard(), hull->GetPosition(), hy);
 			TendPick(picks_[kPickSteer], kPickSteer, true, lastAt_ + lastRot_ * RE::NiPoint3{ seat_.x, seat_.y, seat_.z + 22.0f }, by);
-			TendPick(picks_[kPickRow], kPickRow, true, lastAt_ + lastRot_ * RE::NiPoint3{ rowSeat_.x, rowSeat_.y, rowSeat_.z + 24.0f }, by);
+			TendPick(picks_[kPickRow], kPickRow, Kind() == kKindRow, lastAt_ + lastRot_ * RE::NiPoint3{ rowSeat_.x, rowSeat_.y, rowSeat_.z + 24.0f }, by);  // v1.8.8 (v1.8.26: no oars on the sailing boats)
 			if (picks_[kPickBedroll].base)  // v1.7.11: the roll tied under the bow thwart (model 0, 113.7, about 56)
-				TendPick(picks_[kPickBedroll], kPickBedroll, nearL(RE::NiPoint3{ 0.0f, 113.7f, 0.0f }), lastAt_ + lastRot_ * RE::NiPoint3{ 0.0f, 113.7f, 50.0f }, by);  // v1.7.12: also to pack it up
+				TendPick(picks_[kPickBedroll], kPickBedroll, Kind() == kKindRow && nearL(RE::NiPoint3{ 0.0f, 113.7f, 0.0f }), lastAt_ + lastRot_ * RE::NiPoint3{ 0.0f, 113.7f, 50.0f }, by);  // v1.7.12: also to pack it up (v1.8.26: the rowboat's only)
+			if (picks_[kPickSail].base && sailNode_ && SailEnabled() && Kind() != kKindRow)  // v1.8.21: no mast prompt on the rowboat. v1.7.73 (v1.7.81: only with sailing enabled): the mast, chest high (the bedroll's prompt is down by the floor)
+				TendPick(picks_[kPickSail], kPickSail, nearL(RE::NiPoint3{ 0.0f, kSailY, 0.0f }), lastAt_ + lastRot_ * RE::NiPoint3{ 0.0f, kSailY, 112.0f }, by);
 		}
 	public:
 
 		void Delete(bool a_say)
 		{
 			if (seated_) StandUp("hull deleted");
-			if (Crew::Lingering()) Crew::StandAll(Crew::g.pose);  // v1.7.28: still seated, waiting: up
+			if (IsActive() && Crew::Lingering()) Crew::StandAll(Crew::g.pose);  // v1.7.28: still seated, waiting: up
 			DropPicks();  // v1.7.9
 			DropHeld();
 			DropLamp();
 			DropBedLamp();  // v1.7.34
-			Gear::RemoveAll("the boat deleted");  // v1.7.38
+			if (kind_ == kKindRow) Gear::RemoveAll("the boat deleted");  // v1.7.38 (v1.8.26: the rowboat's bed)
 			DeleteCarrier();
 			if (auto* ref = Ref()) {
 				RemoveMobile(ref);
@@ -1726,13 +3970,13 @@ namespace
 				Print("RowRim: no test hull");
 			}
 			refId_ = 0;
-			body_ = nullptr;
+			body_.reset();
 			needInit_ = false;
 		}
 
 		// ---- co-save (v0.3.4): which hull and carrier are ours, the boat pose and the seat ----
 		static constexpr std::uint32_t kRecHull = 'HULL';
-		static constexpr std::uint32_t kRecVersion = 3;  // v0.6.0: both seats; v1.1.0: paint and height
+		static constexpr std::uint32_t kRecVersion = 4;  // v0.6.0: both seats; v1.1.0: paint and height; v1.8.8: which boat
 		void Save(SKSE::SerializationInterface* a_intfc)
 		{
 			if (!refId_ || !Ref()) return;
@@ -1744,39 +3988,61 @@ namespace
 			a_intfc->WriteRecordData(flags);
 			a_intfc->WriteRecordData(static_cast<std::int32_t>(paint_));
 			a_intfc->WriteRecordData(heightOff_);
-			logger::info("Co-save: hull {:08X} carrier {:08X} saved", refId_, carrierId_);
+			a_intfc->WriteRecordData(static_cast<std::int32_t>(Kind()));  // v1.8.8
+			logger::info("Co-save: {} hull {:08X} carrier {:08X} saved", Dims().label, refId_, carrierId_);
 		}
 		// v1.3.0: one record (the co-save loop is LoadAll, which also reads the lake boats' records)
-		void LoadRecord(SKSE::SerializationInterface* a_intfc, std::uint32_t type, std::uint32_t version)
+		// v1.8.26: one HULL record per boat out; each goes back to its own boat
+		static void LoadRecordAll(SKSE::SerializationInterface* a_intfc, std::uint32_t type, std::uint32_t version)
+		{
+			if (type != kRecHull || version < 1 || version > 4) return;
+			RE::FormID hull = 0, carrier = 0;
+			float v[10]{};
+			std::uint32_t flags = 0;
+			a_intfc->ReadRecordData(hull);
+			a_intfc->ReadRecordData(carrier);
+			const int nf = version >= 2 ? 10 : 7;
+			for (int i = 0; i < nf; ++i) a_intfc->ReadRecordData(v[i]);
+			a_intfc->ReadRecordData(flags);
+			std::int32_t pnt = Paint::kBlue;
+			float height = 0.0f;
+			if (version >= 3) {
+				a_intfc->ReadRecordData(pnt);
+				a_intfc->ReadRecordData(height);
+			}
+			int kind = kKindRow;
+			if (version >= 4) {  // v1.8.8: which boat this is (before: the ini's model)
+				std::int32_t k = kKindRow;
+				a_intfc->ReadRecordData(k);
+				kind = std::clamp(static_cast<int>(k), 0, kKindCount - 1);
+			} else kind = IniKind();
+			auto& b = Of(kind);
+			if (version >= 3) {
+				b.heightOff_ = height;
+				b.paint_ = std::clamp(static_cast<int>(pnt), 0, Paint::kCount - 1);
+			}
+			b.LoadRecord(a_intfc, hull, carrier, v, flags, version);
+		}
+		void LoadRecord(SKSE::SerializationInterface* a_intfc, RE::FormID hull, RE::FormID carrier, const float* v, std::uint32_t flags, std::uint32_t version)
 		{
 			{
-				if (type != kRecHull || version < 1 || version > 3) return;
-				RE::FormID hull = 0, carrier = 0;
-				float v[10]{};
-				std::uint32_t flags = 0;
-				a_intfc->ReadRecordData(hull);
-				a_intfc->ReadRecordData(carrier);
-				const int nf = version >= 2 ? 10 : 7;
-				for (int i = 0; i < nf; ++i) a_intfc->ReadRecordData(v[i]);
-				a_intfc->ReadRecordData(flags);
-				if (version >= 3) {
-					std::int32_t pnt = Paint::kBlue;
-					a_intfc->ReadRecordData(pnt);
-					a_intfc->ReadRecordData(heightOff_);
-					paint_ = std::clamp(static_cast<int>(pnt), 0, Paint::kCount - 1);
-				}
+				rowLoaded_ = false;  // this boat's own settings
+				sailSpeed_ = -1.0f;
 				paintedRoot_ = nullptr;
 				RE::FormID h = 0, c = 0;
 				const bool okH = hull && a_intfc->ResolveFormID(hull, h);
 				const bool okC = carrier && a_intfc->ResolveFormID(carrier, c);
 				refId_ = okH ? h : 0;
 				carrierId_ = okC ? c : 0;
-				CarrierAudio::id.store(carrierId_, std::memory_order_relaxed);
+				rebased_ = false;  // v1.8.66
+				CarrierAudio::ids[kind_].store(carrierId_, std::memory_order_relaxed);
 				pos_ = { v[0], v[1], v[2] };
 				yaw_ = v[3];
 				if (version >= 2) {
 					seat_ = { v[4], v[5], v[6] };
 					rowSeat_ = { v[7], v[8], v[9] };
+					// v1.8.40: the sailing boat's old default helm seat (0 -200 47.5 in the model) moves over to the tiller
+					if (kind_ == kKindSail && (seat_ - kSailHelmSeatOld * kSailScale).Length() < 0.5f) seat_ = kSailHelmSeat * kSailScale;
 					// v1.4.0: the old default oar seat (0 0 33, rowed at +15) moves to where the clip sits
 					if (std::abs(rowSeat_.x) < 0.01f && std::abs(rowSeat_.y) < 0.01f && std::abs(rowSeat_.z - 33.0f) < 0.01f) rowSeat_.y = 15.0f;
 				}
@@ -1787,22 +4053,20 @@ namespace
 				havePose_ = false;
 				inits_ = 0;
 				root_ = nullptr;
-				body_ = nullptr;
+				body_.reset();
+				UnrideVisual("load");  // v1.8.57
 				visual_.reset();
 			wbShown_ = nullptr;
 				aiApplied_ = false;
 				carrierChecked_ = carrierSwapped_ = false;  // v1.7.71
 				speed_ = turn_ = 0.0f;
-				logger::info("Co-save: hull {:08X} ({}) carrier {:08X} ({}) restored at {:.0f} {:.0f} {:.0f}", refId_, okH ? "ok" : "gone", carrierId_, okC ? "ok" : "gone",
+				logger::info("Co-save: {} hull {:08X} ({}) carrier {:08X} ({}) restored at {:.0f} {:.0f} {:.0f}", Dims().label, refId_, okH ? "ok" : "gone", carrierId_, okC ? "ok" : "gone",
 					pos_.x, pos_.y, pos_.z);
 			}
 		}
 
 		void Forget()
 		{
-			BoatFishing::startHold = 0.0f;
-			BoatFishing::quitAfterMenu = false;
-			BoatFishing::watchAttempt = BoatFishing::sawActiveAttempt = false;
 			for (auto& pk : picks_) { pk.h = {}; pk.id = 0; pk.set = false; }  // v1.7.9: the saved ones are swept (TendPicks)
 			picksSweep_ = true;
 			dockWait_ = 6.0f;  // v1.7.8: the save's own boat is restored first
@@ -1820,13 +4084,14 @@ namespace
 			tentNode_ = nullptr;
 			tentA_ = 0.0f;
 			lamp_st_ = LampSwing{};
+			UnrideVisual("reset");  // v1.8.57
 			visual_.reset();
 			wbShown_ = nullptr;
 			carrierId_ = 0;
-			CarrierAudio::id.store(0, std::memory_order_relaxed);
+			CarrierAudio::ids[kind_].store(0, std::memory_order_relaxed);
 			helm_ = false;
 			refId_ = 0;
-			body_ = nullptr;
+			body_.reset();
 			needInit_ = false;
 		}
 
@@ -1887,6 +4152,7 @@ namespace
 		void HoldTalk() { noTalkUntil_ = NowS() + 1.0; }
 		bool NoTalk() const { return seated_ || NowS() < noTalkUntil_; }
 		bool Seated() const { return seated_; }
+		bool OnBoat() const { return HaveBoat() && (seated_ || PlayerAboard()); }  // v1.8.0: the underwater look only from the boat
 		// v1.7.42 (OAS did the same): stood up before a save is written and when the map opens (no fast travel or saves
 		// made in the seat)
 		void StandFor(const char* a_why)
@@ -1897,16 +4163,31 @@ namespace
 		// E: stand up when seated; sit when standing on (or right by) the hull. Returns true if it acted.
 		bool OnActivate()
 		{
-			if (seated_) { StandUp("E"); return true; }  // v1.7.24: never fishing from the seat
+			if (seated_) {  // v1.7.24
+				if (SeatFlipTooSoon("stand up")) return true;  // v1.8.57
+				StandUp("E");
+				return true;
+			}
 			if (picksOk_) return false;  // v1.7.23: standing, only the seat prompts sit you down (E on the hull is the game's: picking up what you dropped)
 			if (!Ref() || !body_) return false;
 			if (!PlayerAboard()) return false;
-			if (Gear::Targeted()) return false;  // v1.7.0: E is for the fishing supplies under the crosshair
+			if (Gear::Targeted()) return false;  // v1.7.0: E is for the bedroll under the crosshair
 			if (PickedProxy()) return false;     // v1.7.9: the prompt's own activation does it
+			if (SeatFlipTooSoon("sit")) return true;  // v1.8.57
 			RequestSit(NearestSeat());
 			return true;
 		}
 		double noTalkUntil_{ 0.0 };
+		// v1.8.57: one E press = one step. On Elysium the press that stood you up reached the seat prompt (back under you
+		// 0.15 s later) and sat you straight down again: you could never get up. A sit or stand within 0.6 s of the last is ignored.
+		double seatFlipAt_{ -10.0 };
+		bool SeatFlipTooSoon(const char* a_what) const
+		{
+			const double since = NowS() - seatFlipAt_;
+			if (since >= 0.6) return false;
+			logger::info("Seat: E to {} ignored ({:.2f} s after the last sit / stand)", a_what, since);
+			return true;
+		}
 		void ToggleSeat()
 		{
 			if (seated_) { StandUp("oas sit"); return; }
@@ -1956,7 +4237,13 @@ namespace
 			char buf[32]{};
 			std::string from = "RowRim.ini";
 			std::string path = ini;
-			if (GetPrivateProfileStringA("Row", "MaxSpeed", "", buf, sizeof(buf), ini.c_str()) == 0) {
+			const char* sec = RowSection();  // v1.7.98: [Row] the rowboat, [SailBoat] the sailing boat
+			const char* rd = sec;
+			if (GetPrivateProfileStringA(sec, "MaxSpeed", "", buf, sizeof(buf), ini.c_str()) == 0 && sec != std::string_view("Row")) {
+				rd = "Row";  // another boat's first settings: a copy of the rowboat's, then its own
+				from = std::format("RowRim.ini [Row] (copied to [{}])", sec);
+				path = "";
+			} else if (GetPrivateProfileStringA(sec, "MaxSpeed", "", buf, sizeof(buf), ini.c_str()) == 0) {
 				std::error_code ec;
 				const auto oas = (std::filesystem::current_path(ec) / "Data" / "SKSE" / "Plugins" / "OarsAndSails.ini").string();
 				if (GetPrivateProfileStringA("Row", "MaxSpeed", "", buf, sizeof(buf), oas.c_str()) > 0) { path = oas; from = "OarsAndSails.ini (taken over)"; }
@@ -1964,21 +4251,32 @@ namespace
 			}
 			auto f = [&](const char* a_key, float a_def) {
 				char b[32]{};
-				GetPrivateProfileStringA("Row", a_key, "", b, sizeof(b), path.c_str());
+				GetPrivateProfileStringA(rd, a_key, "", b, sizeof(b), path.empty() ? ini.c_str() : path.c_str());
 				try { return b[0] ? std::stof(b) : a_def; } catch (...) { return a_def; }
 			};
 			rowMax_ = std::clamp(f("MaxSpeed", 300.0f), 50.0f, 700.0f);
 			rowDrag_ = std::clamp(f("Glide", 0.07f), 0.01f, 0.8f);
 			turnScale_ = std::clamp(f("Turn", 1.0f), 0.3f, 3.0f);
+			turnLag_ = std::clamp(f("TurnLag", 2.5f), 1.0f, 6.0f);  // v1.7.97
 			if (path != ini) SaveRowSettings();
-			logger::info("Row: top speed {:.0f}, glide {:.2f}, turning x{:.2f} from {}", rowMax_, rowDrag_, turnScale_, from);
+			logger::info("Row: [{}] top speed {:.0f}, glide {:.2f}, turning x{:.2f}, sluggishness {:.1f} from {}", sec, rowMax_, rowDrag_, turnScale_, turnLag_, from);
 		}
 		void SaveRowSettings()
 		{
 			const auto ini = Plankton::IniPath();
-			WritePrivateProfileStringA("Row", "MaxSpeed", std::format("{:.0f}", rowMax_).c_str(), ini.c_str());
-			WritePrivateProfileStringA("Row", "Glide", std::format("{:.3f}", rowDrag_).c_str(), ini.c_str());
-			WritePrivateProfileStringA("Row", "Turn", std::format("{:.2f}", turnScale_).c_str(), ini.c_str());
+			WritePrivateProfileStringA(RowSection(), "MaxSpeed", std::format("{:.0f}", rowMax_).c_str(), ini.c_str());
+			WritePrivateProfileStringA(RowSection(), "Glide", std::format("{:.3f}", rowDrag_).c_str(), ini.c_str());
+			WritePrivateProfileStringA(RowSection(), "Turn", std::format("{:.2f}", turnScale_).c_str(), ini.c_str());
+			WritePrivateProfileStringA(RowSection(), "TurnLag", std::format("{:.2f}", turnLag_).c_str(), ini.c_str());
+		}
+		// v1.7.97: how sluggishly the boat answers the helm or the oars: 1 the old quick turn, 2.5 by default (a heavy boat
+		// swinging slowly into a turn and slowly out of it); RowRim.ini [Row] TurnLag, oas "row lag N", the settings page
+		void SetTurnLag(float a_lag)
+		{
+			if (!rowLoaded_) LoadRowSettings();
+			turnLag_ = std::clamp(a_lag, 1.0f, 6.0f);
+			SaveRowSettings();
+			Print(std::format("RowRim: turn sluggishness {:.1f} (default 2.5, 1 = the old quick turn; saved)", turnLag_));
 		}
 		void ResetRowSettings()
 		{
@@ -2001,23 +4299,38 @@ namespace
 		}
 		void SetIdleRock(float a_amount) { idleBob_ = std::clamp(a_amount, 0.0f, 3.0f); Print(std::format("RowRim: idle rocking x{:.1f} (OAS default 1)", idleBob_)); }
 		void SetLead(float a_k) { drawLead_ = std::clamp(a_k, 0.0f, 1.0f); Print(std::format("RowRim: seated boat drawn {:.2f} of the way to this frame's pose (0 = OAS, a frame behind; 1 = this frame)", drawLead_)); }
+		// v1.8.82: how this boat is drawn while seated (oas "draw auto|old|now|player|pin", or the menu's Advanced page; saved in
+		// RowRim.ini [Advanced] DrawRow / DrawSail). auto = the rowboat pinned, the others one frame behind (old).
+		static constexpr const char* kDrawNames[5] = { "auto", "old", "now", "player", "pin" };
+		const char* DrawKey() const { return kind_ == kKindRow ? "DrawRow" : kind_ == kKindSail ? "DrawSail" : "DrawLong"; }
+		void LoadDrawSel() const
+		{
+			if (drawLoaded_) return;
+			drawLoaded_ = true;
+			char b[16]{};
+			GetPrivateProfileStringA("Advanced", DrawKey(), "auto", b, sizeof(b), Plankton::IniPath().c_str());
+			drawSel_ = 0;
+			for (int k = 0; k < 5; ++k) if (_stricmp(b, kDrawNames[k]) == 0) drawSel_ = k;
+		}
+		int DrawSel() const { LoadDrawSel(); return drawSel_; }
+		void SetDrawSel(int a_sel)
+		{
+			LoadDrawSel();
+			drawSel_ = std::clamp(a_sel, 0, 4);
+			WritePrivateProfileStringA("Advanced", DrawKey(), kDrawNames[drawSel_], Plankton::IniPath().c_str());
+		}
 		void SetDrawMode(const std::string& a_m)
 		{
-			drawMode_ = a_m == "now" ? 1 : a_m == "player" ? 2 : a_m == "pin" ? 3 : 0;
-			Print(std::format("RowRim: seated boat drawn {}", drawMode_ == 0 ? "one frame behind, seated people moved with it (OAS, default)" : drawMode_ == 1 ? "at this frame's seat pose" : drawMode_ == 2 ? "from the drawn player" : "at this frame's pose, rower pinned to the seat (oas \"draw pin\")"));
+			int sel = 1;
+			for (int k = 0; k < 5; ++k) if (a_m == kDrawNames[k]) sel = k;
+			SetDrawSel(sel);
+			const int m = DrawModeNow();
+			Print(std::format("RowRim: seated boat drawn {} (saved)", sel == 0 ? "automatically (the rowboat pinned, the others a frame behind)" : m == 0 ? "one frame behind, seated people moved with it (OAS)" : m == 1 ? "at this frame's seat pose" : m == 2 ? "from the drawn player" : "at this frame's pose, rower pinned to the seat"));
 		}
 		void SetRowShift(float a_s) { rowShift_ = std::clamp(a_s, -40.0f, 60.0f); Print(std::format("RowRim: while rowing the rower sits {:.0f} toward the bow (+) / stern (-) of the seat, the oars stay in the oarlocks", rowShift_)); }
 		void SetOarRest(float a_in, float a_dip) { restIn_ = std::clamp(a_in, 0.0f, 0.6f); restDip_ = std::clamp(a_dip, -20.0f, 45.0f); Print(std::format("RowRim: resting oars {:.0f}% inboard of the oarlock, blade {:.0f} deg down", restIn_ * 100.0f, restDip_)); }
 		void SetHandLock(bool a_on) { handLock_ = a_on; Print(std::format("RowRim: oar hand lock {}", a_on ? "on" : "off (the clip's own oar pose)")); }
 
-		// OAS 28 / 56: the row clip turns AnimObjectA; ThirdPersonState follows that bone into animationRotation and the orbit
-		// camera turns over with it. While the player rows (and up to 3 s after) the field is put back to identity.
-		void ResetAnimRotation(RE::ThirdPersonState* a_tps)
-		{
-			if (!a_tps || !(rowAnimOn_ || rideTime_ < animRotUntil_)) return;
-			if (std::abs(a_tps->animationRotation.w) > 0.9999f) return;
-			a_tps->animationRotation = RE::NiQuaternion(1.0f, 0.0f, 0.0f, 0.0f);
-		}
 
 		// After the animation update (camera hook): the oars. One set, on the boat model. Parked or seated they lie stowed in the
 		// boat (OAS 50); once the row clip poses the rower's AnimObject bones (third person) they blend from the stowed pose into
@@ -2028,7 +4341,7 @@ namespace
 				oarsRunLogged_ = true;
 				logger::info("Oars: tending (visual {}, oars {} {})", visual_ ? "yes" : "no", oars_[0] ? "R" : "-", oars_[1] ? "L" : "-");
 			}
-			if (!visual_) return;
+			if (!visual_ || Kind() != kKindRow) return;  // v1.8.26: oars on the rowboat only
 			auto* player = RE::PlayerCharacter::GetSingleton();
 			// v1.7.9: the oars follow whoever rows: the player, or the crew rower with the player at the stern
 			auto* rower = RowingActor();
@@ -2074,7 +4387,7 @@ namespace
 			// v1.2.3: with the rower pinned to the seat before the camera (PinRower), the hands are read in the frame that puts
 			// his root on the seat, so the oars stay in his hands however far his 3D was off the boat this frame
 			RE::NiTransform boatW = visual_->world;
-			if (want && playerRows && drawMode_ == 3 && havePose_) {
+			if (want && playerRows && DrawModeNow() == 3 && havePose_) {
 				boatW.rotate = lastRot_;
 				boatW.translate = root->world.translate - lastRot_ * SeatPos();
 			}
@@ -2126,7 +4439,9 @@ namespace
 			const float w = oarW_ * oarW_ * (3.0f - 2.0f * oarW_);
 			stowW_ = std::clamp(stowW_ + (oarsStowed_ ? 1.0f : -1.0f) * a_dt / kOarBlend, 0.0f, 1.0f);  // swings out over the blend time
 			const float sw = stowW_ * stowW_ * (3.0f - 2.0f * stowW_);
-			shipW_ = std::clamp(shipW_ + ((Gear::BedrollShown() && !seated_) ? 1.0f : -1.0f) * a_dt / kOarBlend, 0.0f, 1.0f);  // v1.7.33
+			// v1.7.75: also under sail (full or reefed) while nobody rows: the oars lie shipped as in camp
+			const bool sailShip = (sailNode_ || sbMain_) && (sail_ == 2 || sail_ == 3) && !rowWant_ && !rowAnimOn_;  // v1.7.92: the sailing boat too
+			shipW_ = std::clamp(shipW_ + (((kind_ == kKindRow && Gear::BedrollShown() && !seated_) || sailShip) ? 1.0f : -1.0f) * a_dt / kOarBlend, 0.0f, 1.0f);  // v1.7.33
 			const float shS = shipW_ * shipW_ * (3.0f - 2.0f * shipW_);
 			for (int k = 0; k < 2; ++k) {
 				auto& oar = oars_[k];
@@ -2136,7 +4451,7 @@ namespace
 				const RE::NiTransform rest = Oar::RestLocal(sd, lockLocal_, restIn_, restDip_);
 				const RE::NiTransform base0 = sw >= 1.0f ? stow : sw <= 0.0f ? rest : Oar::Blend(rest, stow, sw);  // v1.2.4
 				// v1.7.33: the bed out (you are not seated): the oars lie along the gunwales in the middle and aft oarlocks
-				RE::NiTransform ship = Oar::ShipLocal(sd, lockLocal_, kAftLock, 30.0f);
+				RE::NiTransform ship = Oar::ShipLocal(sd, lockLocal_, aftLock_, 30.0f);
 				// v1.7.36: the whole oar must lie aft of the tent (the 11:44 shot: a blade through the tarp, so the oar lay
 				// forward): if either end reaches past y 40, the oar is turned end for end
 				{
@@ -2144,7 +4459,7 @@ namespace
 					const RE::NiPoint3 e1 = ship * (Oar::g_b.centre + ax * Oar::g_b.halfLen);
 					const RE::NiPoint3 e2 = ship * (Oar::g_b.centre - ax * Oar::g_b.halfLen);
 					if ((std::max)(e1.y, e2.y) > 40.0f) {
-						ship = Oar::ShipLocal(sd, lockLocal_, kAftLock, 30.0f, true);
+						ship = Oar::ShipLocal(sd, lockLocal_, aftLock_, 30.0f, true);
 						if (!shipFlipLogged_) { shipFlipLogged_ = true; logger::info("Oars: shipped end for end (an end was at y {:.0f})", (std::max)(e1.y, e2.y)); }
 					}
 				}
@@ -2234,6 +4549,15 @@ namespace
 		static inline const RE::NiPoint3 kAftLock{ 88.3f, -95.0f, 77.9f };  // the aft oarlock forks (shaft centre), from the hull mesh
 
 		RE::FormID RefId() const { return refId_; }
+		// v1.7.84: what the Oars and Sails window shows
+		struct UiValues { float rowMax, rowDrag, turn, height; int paint, sail; bool lamp, docks, sailOn; float sailSpeed, sailFlap, turnLag; int model; bool out; int sailModel; int carry; int carryJump; };
+		UiValues GetUiValues()
+		{
+			if (!rowLoaded_) LoadRowSettings();
+			SailLoad();
+			LoadSailTuning();
+			return { rowMax_, rowDrag_, 0.45f * turnScale_, heightOff_, paint_, sail_ < 0 ? 0 : sail_, lampOn_, Of(kKindRow).docksOn_, SailEnabled(), sailSpeed_, sailFlap_, turnLag_, Kind(), HaveBoat(), SailModelIndex(), CarryMode(), JumpMode() };
+		}
 		void SetPaint(const std::string& a_name)
 		{
 			for (int i = 0; i < Paint::kCount; ++i) {
@@ -2290,7 +4614,7 @@ namespace
 		// step, not our glue, on its own timing. Now the camera, the rower and the boat all use the one pose.
 		void PinRower()
 		{
-			if (drawMode_ != 3 || !lateOn_ || !seated_ || !carrierOn_ || !havePose_) return;
+			if (DrawModeNow() != 3 || !lateOn_ || !seated_ || !carrierOn_ || !havePose_) return;
 			auto* player = RE::PlayerCharacter::GetSingleton();
 			if (!player) return;
 			const RE::NiPoint3 want = lastAt_ + lastRot_ * SeatPos();
@@ -2327,116 +4651,292 @@ namespace
 		// The camera is moved with the rower's fix, so it never shows the slip either. oas "seatguard on|off". ----
 	public:
 		void SetSeatGuard(bool a_on) { sgOn_ = a_on; sgHave_ = false; Print(std::format("RowRim: seat guard {}", a_on ? "on (rower and camera held steady on the drawn boat)" : "off")); }
-		void SeatGuard(RE::ThirdPersonState* a_tps)
+
+		void CamFrame() { ++camFrame_; }
+		// v1.8.58: the helm camera, ours. Seated at the helm (third person) the camera's place and turn are computed here
+		// once a frame, after the game's camera update and our boat placement. GetTranslation / GetRotation of the third
+		// person state hand ours to the game, so the furniture / tiller animation swaps and other camera mods' state changes
+		// never move it.
+		// v1.8.59: PlayStation feel: the mouse sets where the orbit goes and it eases there (Smooth), the camera trails
+		// the boat a touch (Follow), idle it swings back behind her (Recenter), scroll zooms MinDist..MaxDist. V: cinematic
+		// shots, cut every ShotLength s (chase, low side, bow looking back, high wide, fly-by from ahead, slow orbit).
+		bool HelmCamActive() const { return hcActive_; }
+		// v1.8.79: raw mouse / wheel / right stick from the InputSink (the look and the zoom of the helm camera)
+		static inline std::atomic<float> g_wheel{ 0.0f }, g_mx{ 0.0f }, g_my{ 0.0f }, g_rx{ 0.0f }, g_ry{ 0.0f };
+		static inline std::atomic<bool> g_mouseSeen{ false };
+		float hcZoomT_{ 0.0f };
+		void HelmCamTick(RE::ThirdPersonState* a_tps)
 		{
-			sgFixR_ = 0.0f;
-			sgFixC_ = 0.0f;
-			if (!sgOn_ || !seated_ || !visual_ || !visual_->parent || !havePose_) { sgHave_ = false; return; }
-			auto* player = RE::PlayerCharacter::GetSingleton();
-			auto* root = player ? player->Get3D(false) : nullptr;
-			if (!root) { sgHave_ = false; return; }
-			// v1.7.18: run BEFORE the game's camera update (the camera is placed from his 3D there), against the pose the boat is
-			// about to be drawn at this frame (LatePlace's own rule), so the camera is built from the steadied rower
-			RE::NiPoint3 boat;
-			RE::NiMatrix3 R;
-			DrawPose(boat, R);
-			const RE::NiMatrix3 inv = R.Transpose();
-			auto* pc = RE::PlayerControls::GetSingleton();
-			const bool look = pc && (std::fabs(pc->data.lookInputVec.x) > 1.0e-4f || std::fabs(pc->data.lookInputVec.y) > 1.0e-4f);
-			const bool zoomed = a_tps && sgHave_ && std::fabs(a_tps->currentZoomOffset - sgZoom_) > 1.0e-4f;
-			if (a_tps) sgZoom_ = a_tps->currentZoomOffset;
-			RE::NiPoint3 rel = inv * (root->world.translate - boat);
-			if (!sgHave_) {
-				sgRow_ = rel;
-				if (a_tps) sgCam_ = inv * (a_tps->translation - boat);
-				sgRowDev_ = 0;
-				sgCamHold_ = 0;
-				sgHave_ = true;
+			const auto& c = HelmCamSet::Get();
+			// v1.8.63: the boat model blinking out for a moment (the carrier lost) no longer hands the camera back to the
+			// game for those frames (it swung round to look at you side on): its last place is held for up to 2 s
+			// v1.8.73: the boat drawn the old way (the hull ref itself, no model on the carrier: the rowboat by default) had
+			// no visual_, so the helm camera never took over there and the game's camera (going under and looking up as
+			// you sat) stayed: the hull's own 3D is used then
+			RE::NiAVObject* boatNode = visual_ && visual_->parent ? static_cast<RE::NiAVObject*>(visual_.get()) : nullptr;
+			float boatLift = 0.0f;
+			if (!boatNode && root_ && root_->parent) { boatNode = root_; boatLift = kCollisionLift; }
+			const bool haveBoat = boatNode != nullptr;
+			const double tnow = NowS();
+			if (haveBoat) hcBoatSeen_ = tnow;
+			const bool grace = !haveBoat && hcActive_ && hcHaveBoat_ && tnow - hcBoatSeen_ < 2.0;
+			const bool want = seated_ && (haveBoat || grace) && c.on;  // v1.8.76b: the oars seat too (the game's own camera wound up there: 43 rad swings)
+			if (grace && hcGraceLogs_ < 20 && !hcInGrace_) { ++hcGraceLogs_; logger::info("Helm camera: the boat model is gone for a moment, held at its last place"); }
+			hcInGrace_ = grace;
+			if (!want) {
+				if (hcActive_) logger::info("Helm camera: handed back to the game");
+				// v1.8.85: the game's own camera ran under ours the whole time with the mouse look wound into its pitch (freeRotation.y):
+				// handed back it sat under the water looking up at you. Its pitch goes back to level as it takes over. Uncertain, a soft rule
+				if (hcActive_ && a_tps) { a_tps->freeRotation.y = 0.0f; logger::info("Helm camera: the game's own pitch put back to level"); }
+				if (hcActive_) SmoothCamLink::Give();  // v1.8.61
+				hcActive_ = false;
+				hcHave_ = false;
+				hcHaveBoat_ = false;
 				return;
 			}
-			// 1) the rower: his place on the drawn boat may only change 0.25 a frame (the clip's own moves are slower; row
-			// start / stop blend in over a few more frames); a jump of more than 8 is a new seat or pose and is taken as is
-			RE::NiPoint3 want = rel;
-			const RE::NiPoint3 ch = rel - sgRow_;
-			const float chl = ch.Length();
-			// v1.7.17: a jump over 3 that is still there the next frame is real (row start / stop) and is taken at once
-			// v1.7.19: ... and only if he stayed where he jumped to (an engine late frame jumps out and back: never taken)
-			const bool held = chl > 3.0f && sgRowBig_ && (rel - sgRowRaw_).Length() < 1.5f;
-			sgRowBig_ = chl > 3.0f;
-			sgRowRaw_ = rel;
-			if (chl > 0.25f && chl < 8.0f && !held) want = sgRow_ + ch * (0.25f / chl);
-			sgRow_ = want;
-			const RE::NiPoint3 dr = want - rel;
-			const float drl = dr.Length();
-			if (drl > 0.01f) {
-				const RE::NiPoint3 w = R * dr;
-				RE::NiPoint3 dl = w;
-				if (auto* par = root->parent) {
-					dl = par->world.rotate.Transpose() * w;
-					if (par->world.scale > 0.0f) dl = dl / par->world.scale;
-				}
-				root->local.translate += dl;
-				RE::NiUpdateData data{};
-				data.flags.set(RE::NiUpdateData::Flag::kDirty);
-				root->Update(data);
-				sgFixR_ = drl;
+			if (hcActive_ && hcFrame_ == camFrame_) return;
+			hcFrame_ = camFrame_;
+			const double now = NowS();
+			const float dt = hcHave_ ? std::clamp(static_cast<float>(now - hcLast_), 0.0f, 0.1f) : 0.0f;
+			hcLast_ = now;
+			if (haveBoat) {
+				const RE::NiMatrix3& R = boatNode->world.rotate;
+				hcBoatYaw_ = std::atan2(R.entry[0][1], R.entry[1][1]);  // her forward (local Y) in the world
+				hcBoat_ = boatNode->world.translate - R * RE::NiPoint3{ 0.0f, 0.0f, boatLift };
+				hcHaveBoat_ = true;
 			}
-			(void)look;
-			(void)zoomed;
-		}
-
-		// v1.7.17: the camera, where the game really takes it. The v1.7.16 log showed ThirdPersonState.translation is not what is
-		// drawn (our edits to it never reached the screen, DRAWNCAM): the game reads the camera's place through the state's
-		// GetTranslation (vtable 5) after its update. Hooked: against the drawn boat the camera may move only 0.6 a frame
-		// (its own stroke sway is slower), so a frame where the engine left the rower's 3D a frame behind (eng ~0 in the log,
-		// about every couple of seconds while the row clip plays) no longer shakes the view; a pull-in of more than 20 (the hull's
-		// collision reloading on a cell hop) is held until the game's camera is back. Look input / zoom: passed straight on.
-		void CamOut(RE::ThirdPersonState* a_tps, RE::NiPoint3& a_pos)
-		{
-			sgFixC_ = 0.0f;
-			if (!sgOn_ || !a_tps || !seated_ || !visual_ || !visual_->parent) { sgCamHave_ = false; mlOutHave_ = false; return; }
-			if (sgCamFrame_ == camFrame_ && sgCamHave_) { a_pos = sgCamOut_; return; }  // asked again this frame: the same answer
-			sgCamFrame_ = camFrame_;
-			const RE::NiPoint3 boat = visual_->world.translate;
-			const RE::NiMatrix3& R = visual_->world.rotate;
-			const RE::NiMatrix3 inv = R.Transpose();
-			auto* pc = RE::PlayerControls::GetSingleton();
-			const bool look = pc && (std::fabs(pc->data.lookInputVec.x) > 1.0e-4f || std::fabs(pc->data.lookInputVec.y) > 1.0e-4f);
-			const bool zoomed = sgCamHave_ && std::fabs(a_tps->currentZoomOffset - sgCamZoom_) > 1.0e-4f;
-			sgCamZoom_ = a_tps->currentZoomOffset;
-			const RE::NiPoint3 rel = inv * (a_pos - boat);
-			RE::NiPoint3 out = rel;
-			if (!sgCamHave_ || look || zoomed) {
-				sgCamHold_ = 0;
+			const float boatYaw = hcBoatYaw_;
+			const RE::NiPoint3 boat = hcBoat_;
+			const RE::NiPoint3 pivotNow = boat + RE::NiPoint3{ 0.0f, 0.0f, c.height };
+			if (!hcHave_) {
+				hcYaw_ = hcYawT_ = 0.0f;   // behind the helmsman, looking along her
+				hcPitch_ = hcPitchT_ = 0.22f;
+				hcPivot_ = pivotNow;
+				hcIdle_ = 0.0f;
+				hcDist_ = 0.0f;
+				hcZoomT_ = 0.0f;
+				g_wheel = 0.0f; g_mx = 0.0f; g_my = 0.0f;
+				hcSinceSit_ = 0.0f;  // v1.8.70c
+				hcPosTick_ = 0.0f;
+				hcShot_ = -1;
+				hcHave_ = true;
+				logger::info("Helm camera: ours (boat heading {:.0f} deg)", boatYaw * 57.2958f);
+			}
+			hcActive_ = true;
+			if (a_tps) a_tps->freeRotation.y = 0.0f;  // v1.8.85: the game's own pitch never winds up under ours (see the hand-back below)
+			SmoothCamLink::Take();  // v1.8.61: SmoothCam steps aside (once)
+			auto ease = [&](float a_tau) { return a_tau <= 0.001f ? 1.0f : 1.0f - std::exp(-dt / a_tau); };
+			// the point it looks at trails the boat (snaps on a jump)
+			if ((pivotNow - hcPivot_).Length() > 800.0f) hcPivot_ = pivotNow;
+			else hcPivot_ = hcPivot_ + (pivotNow - hcPivot_) * ease(c.follow);
+			// v1.8.79: our own zoom: the raw wheel and the pad, from a default, closest .. 60000 (never the game's own zoom range)
+			const float maxEff = (std::min)((std::max)(c.maxDist, 12000.0f), 60000.0f);
+			const float zLo = c.minDist;
+			if (hcZoomT_ <= 0.0f) hcZoomT_ = 1100.0f;
+			{
+				const float notches = g_wheel.exchange(0.0f);
+				if (notches != 0.0f) hcZoomT_ *= std::pow(0.85f, notches);
+				float pz = 0.0f;
+				if (Pad::R3Zooming()) pz = Pad::g_leftY; else if (Pad::g_l3) pz = Pad::g_rightY;
+				if (pz != 0.0f) hcZoomT_ *= std::exp(-pz * dt * 1.6f);
+				hcZoomT_ = std::clamp(hcZoomT_, zLo, maxEff);
+			}
+			const float distT = hcZoomT_;
+			RE::NiPoint3 pos, look;
+			if (c.cine) {
+				CineTick(dt, boat, boatYaw, pos, look);
 			} else {
-				const RE::NiPoint3 ch = rel - sgCam_;
-				const float chl = ch.Length();
-				if (sgCamHold_ > 0) {
-					if (chl < 1.0f || ++sgCamHold_ > 40) sgCamHold_ = 0;
-					else out = sgCam_;
-				} else if (chl > 20.0f) {
-					sgCamHold_ = 1;
-					out = sgCam_;
-					if (sgLogs_++ < 20) logger::info("Seat guard: camera pulled {:.0f} toward the boat in one frame, held at its place until the game's camera is back", chl);
+				hcShot_ = -1;
+				float lx = 0.0f, ly = 0.0f;
+				// v1.8.79: the look from the raw mouse and the right stick only, never from the player controls' look input (the row
+				// and tiller clips fed that one: the spin-outs). If no raw mouse event has ever come, the game's look input as before.
+				auto* pcs = RE::PlayerControls::GetSingleton();
+				if (g_mouseSeen.load()) {
+					const float mx = g_mx.exchange(0.0f), my = g_my.exchange(0.0f);
+					// which way the raw counts run against the game's own look (learnt from the frames the mouse really moves)
+					static int s_votX = 0, s_votY = 0;
+					if (pcs && mx != 0.0f && std::fabs(pcs->data.lookInputVec.x) > 1.0e-4f) s_votX = std::clamp(s_votX + (mx * pcs->data.lookInputVec.x > 0.0f ? 1 : -1), -50, 50);
+					if (pcs && my != 0.0f && std::fabs(pcs->data.lookInputVec.y) > 1.0e-4f) s_votY = std::clamp(s_votY + (my * pcs->data.lookInputVec.y > 0.0f ? 1 : -1), -50, 50);
+					lx = (s_votX >= 0 ? 1.0f : -1.0f) * mx * c.mouseScale;
+					ly = (s_votY > 0 ? 1.0f : -1.0f) * my * c.mouseScale;  // until learnt: the raw Y runs down, the look's up
+					lx += g_rx.load() * dt * 7.0f;
+					ly += g_ry.load() * dt * 7.0f;
+				} else if (pcs) { lx = pcs->data.lookInputVec.x; ly = pcs->data.lookInputVec.y; }
+				if (c.invertY) ly = -ly;
+				// v1.8.62: a dead zone: a gamepad stick resting a hair off centre (or a mouse jitter) sent tiny look input every
+				// frame and the orbit crept round on its own
+				const bool tiny = (lx != 0.0f || ly != 0.0f) && std::fabs(lx) < c.deadzone && std::fabs(ly) < c.deadzone;
+				if (tiny) {
+					++hcTiny_;
+					lx = ly = 0.0f;
 				}
-				if (sgCamHold_ == 0 && chl > 0.6f) out = sgCam_ + ch * (0.6f / chl);
-				sgFixC_ = (out - rel).Length();
+				hcDiagT_ += dt;
+				if (hcDiagT_ > 5.0f) {
+					if (hcTiny_ > 0 || hcRecentering_) logger::info("Helm camera: {} tiny look inputs ignored in 5 s (dead zone {:.3f}){}", hcTiny_, c.deadzone, hcRecentering_ ? ", swinging back behind her" : "");
+					hcTiny_ = 0;
+					hcDiagT_ = 0.0f;
+				}
+				hcRecentering_ = false;
+				if (lx != 0.0f || ly != 0.0f) {
+					hcYawT_ = hcYaw_ + std::remainder(hcYawT_ - hcYaw_ + lx * c.sens, 2.0f * kPi);
+					hcPitchT_ -= ly * c.sens;
+					hcIdle_ = 0.0f;
+				} else {
+					hcIdle_ += dt;
+					if (c.recenter && hcIdle_ > c.recenterDelay) {  // idle: back behind her, gently
+						const float back = std::remainder(0.0f - hcYawT_, 2.0f * kPi);
+						hcRecentering_ = std::fabs(back) > 0.01f;
+						hcYawT_ += back * (1.0f - std::exp(-dt * c.recenterSpeed));
+					}
+				}
+				hcPitchT_ = std::clamp(hcPitchT_, c.pitchMin / 57.2958f, c.pitchMax / 57.2958f);
+				const float k = ease(c.smooth);
+				hcYaw_ = std::remainder(hcYaw_ + std::remainder(hcYawT_ - hcYaw_, 2.0f * kPi) * k, 2.0f * kPi);
+				hcYawT_ = hcYaw_ + std::remainder(hcYawT_ - hcYaw_, 2.0f * kPi);
+				hcPitch_ += (hcPitchT_ - hcPitch_) * k;
+				hcDist_ = hcDist_ <= 0.0f ? distT : hcDist_ + (distT - hcDist_) * ease(0.10f);
+				// v1.8.70c: never below the water: zoomed far out a low angle put the camera hundreds under the surface, and
+				// the old fix only lifted it to the surface, looking up at the sky from below the boat. Now the angle itself
+				// is raised so the camera stays over the water at this distance (it slides up as you zoom out)
+				if (auto* wc = RE::PlayerCharacter::GetSingleton() ? RE::PlayerCharacter::GetSingleton()->GetParentCell() : nullptr; wc && wc->IsExteriorCell()) {
+					const float water = wc->GetExteriorWaterHeight();
+					if (water > -1.0e6f && hcDist_ > 1.0f) {
+						const float sMin = std::clamp((water + 25.0f - hcPivot_.z) / hcDist_, -0.99f, 0.99f);
+						const float pMin = std::asin(sMin);
+						if (hcPitch_ < pMin) hcPitch_ = pMin;
+						if (hcPitchT_ < pMin) hcPitchT_ = pMin;
+					}
+				}
+				const float yaw = boatYaw + hcYaw_, cp = std::cos(hcPitch_), sp = std::sin(hcPitch_);
+				const RE::NiPoint3 fwd{ std::sin(yaw) * cp, std::cos(yaw) * cp, -sp };
+				pos = hcPivot_ - fwd * hcDist_;
+				look = hcPivot_;
 			}
-			sgCam_ = out;
-			sgCamHave_ = true;
-			a_pos = boat + R * out;
-			sgCamOut_ = a_pos;
-			// motion log: the camera as drawn, against the boat as drawn
-			mlOutRel_ = out;
-			mlOutHave_ = true;
+			// keep it out of the water
+			if (auto* cell = RE::PlayerCharacter::GetSingleton() ? RE::PlayerCharacter::GetSingleton()->GetParentCell() : nullptr; cell && cell->IsExteriorCell()) {
+				const float water = cell->GetExteriorWaterHeight();
+				if (water > -1.0e6f && pos.z < water + 15.0f) pos.z = water + 15.0f;
+			}
+			hcPos_ = pos;
+			// v1.8.70c: below the boat watch (Miguel: a split second after sitting the camera turns up and looks at the sky from
+			// below, another run from under the water): logged with everything that places it, the first 2 s after sitting
+			// every 0.1 s, then whenever it is under the boat's deck
+			{
+				hcSinceSit_ += dt;
+				const bool under = pos.z < boat.z - 20.0f;
+				if ((hcSinceSit_ < 2.0f || under) && hcPosLogs_ < 80 && (hcPosTick_ -= dt) <= 0.0f) {
+					hcPosTick_ = 0.1f;
+					++hcPosLogs_;
+					auto* pcs = RE::PlayerControls::GetSingleton();
+					logger::info("Helm camera: at {:.0f} {:.0f} {:.0f}{} | boat {:.0f} {:.0f} {:.0f} heading {:.0f} | pivot {:.0f} {:.0f} {:.0f} | pitch {:.2f} (target {:.2f}) orbit {:.2f} dist {:.0f} | look {:.3f} {:.3f} | visual on '{}' | since sitting {:.2f} s",
+						pos.x, pos.y, pos.z, under ? " UNDER THE BOAT" : "", boat.x, boat.y, boat.z, boatYaw * 57.2958f, hcPivot_.x, hcPivot_.y, hcPivot_.z,
+						hcPitch_, hcPitchT_, hcYaw_, hcDist_, pcs ? pcs->data.lookInputVec.x : 0.0f, pcs ? pcs->data.lookInputVec.y : 0.0f,
+						visual_ && visual_->parent ? visual_->parent->name.c_str() : "nothing", hcSinceSit_);
+				}
+			}
+			// v1.8.70b: spin watch: the drawn camera's turn per frame; a fast turn (over 1.5 rad/s for half a second) without the
+			// mouse is logged with what fed it (the boat's heading, our orbit, the cinematic), so a spin in the log says why
+			{
+				const RE::NiPoint3 dv = look - pos;
+				const float camYaw = std::atan2(dv.x, dv.y);
+				const float dy = std::remainder(camYaw - hcLastCamYaw_, 2.0f * kPi);
+				const float dby = std::remainder(boatYaw - hcLastBoatYaw_, 2.0f * kPi);
+				hcLastCamYaw_ = camYaw;
+				hcLastBoatYaw_ = boatYaw;
+				auto* pcs = RE::PlayerControls::GetSingleton();
+				const bool lk = pcs && (std::fabs(pcs->data.lookInputVec.x) > 1.0e-4f || std::fabs(pcs->data.lookInputVec.y) > 1.0e-4f);
+				const float rate = dt > 0.0001f ? std::fabs(dy) / dt : 0.0f;
+				hcFast_ = (!lk && rate > 1.5f) ? hcFast_ + dt : 0.0f;
+				if (hcFast_ > 0.5f && hcSpinLogs_ < 30) {
+					++hcSpinLogs_;
+					hcFast_ = 0.0f;
+					logger::info("Helm camera: SPIN {:.1f} rad/s without the mouse | boat heading {:.0f} deg (turned {:.2f} rad this frame) | orbit {:.2f} (target {:.2f}) pitch {:.2f} | cinematic {} shot {} | visual on {} | dt {:.3f}",
+						rate, boatYaw * 57.2958f, dby, hcYaw_, hcYawT_, hcPitch_, c.cine, hcShot_, visual_ && visual_->parent ? visual_->parent->name.c_str() : "nothing", dt);
+				}
+			}
+			RE::NiPoint3 fwd = look - pos;
+			const float fl = fwd.Length();
+			fwd = fl > 0.01f ? fwd * (1.0f / fl) : RE::NiPoint3{ std::sin(boatYaw), std::cos(boatYaw), 0.0f };
+			const float h = std::atan2(fwd.x, fwd.y);
+			const RE::NiPoint3 right{ std::cos(h), -std::sin(h), 0.0f };
+			const RE::NiPoint3 up{ right.y * fwd.z - right.z * fwd.y, right.z * fwd.x - right.x * fwd.z, right.x * fwd.y - right.y * fwd.x };
+			RE::NiMatrix3 m;  // columns: right, forward, up (local X, Y, Z in the world)
+			m.entry[0][0] = right.x; m.entry[0][1] = fwd.x; m.entry[0][2] = up.x;
+			m.entry[1][0] = right.y; m.entry[1][1] = fwd.y; m.entry[1][2] = up.y;
+			m.entry[2][0] = right.z; m.entry[2][1] = fwd.z; m.entry[2][2] = up.z;
+			hcRot_ = RE::NiQuaternion(m);
 		}
-		void CamFrame() { ++camFrame_; }
+		// v1.8.59: the cinematic shots, GTA style: cut to a new one every ShotLength s (or when a fly-by has passed)
+		void CineTick(float a_dt, const RE::NiPoint3& a_boat, float a_yaw, RE::NiPoint3& a_pos, RE::NiPoint3& a_look)
+		{
+			const auto& c = HelmCamSet::Get();
+			struct Shot { const char* name; float yaw, pitch, dist, height, drift; bool flyby; };
+			static constexpr Shot kShots[] = {
+				{ "chase", 0.0f, 0.12f, 1100.0f, 150.0f, 0.0f, false },
+				{ "low side", 1.57f, -0.02f, 750.0f, 40.0f, 0.04f, false },
+				{ "bow looking back", 3.14159f, 0.10f, 520.0f, 160.0f, 0.0f, false },
+				{ "high wide", 0.6f, 0.75f, 2600.0f, 120.0f, 0.03f, false },
+				{ "fly-by", 0.0f, 0.0f, 0.0f, 60.0f, 0.0f, true },
+				{ "slow orbit", -1.2f, 0.25f, 1300.0f, 140.0f, 0.12f, false },
+				{ "low stern quarter", -0.6f, 0.02f, 650.0f, 50.0f, 0.0f, false },
+			};
+			constexpr int kN = static_cast<int>(sizeof(kShots) / sizeof(kShots[0]));
+			hcShotT_ += a_dt;
+			bool cut = hcShot_ < 0 || hcShotT_ > c.shotLen;
+			if (hcShot_ >= 0 && kShots[hcShot_].flyby && (a_boat - hcFly_).Length() > 2600.0f && hcShotT_ > 2.0f) cut = true;
+			if (cut) {
+				int next = hcShot_;
+				std::uniform_int_distribution<int> d(0, kN - 1);
+				static std::mt19937 rng{ std::random_device{}() };
+				while (next == hcShot_) next = d(rng);
+				hcShot_ = next;
+				hcShotT_ = 0.0f;
+				hcShotYaw_ = kShots[next].yaw;
+				if (kShots[next].flyby) {  // a fixed spot ahead of her and off to a side: she sails past it
+					const float side = (rng() & 1) ? 1.0f : -1.0f;
+					const RE::NiPoint3 f{ std::sin(a_yaw), std::cos(a_yaw), 0.0f }, r{ std::cos(a_yaw), -std::sin(a_yaw), 0.0f };
+					hcFly_ = a_boat + f * 1400.0f + r * (side * 450.0f) + RE::NiPoint3{ 0.0f, 0.0f, kShots[next].height };
+				}
+				logger::info("Helm camera: cinematic shot '{}'", kShots[next].name);
+			}
+			const Shot& s = kShots[hcShot_];
+			const RE::NiPoint3 look = a_boat + RE::NiPoint3{ 0.0f, 0.0f, 110.0f };
+			if (s.flyby) {
+				a_pos = hcFly_;
+			} else {
+				hcShotYaw_ += s.drift * a_dt;
+				const float yaw = a_yaw + hcShotYaw_, cp = std::cos(s.pitch), sp = std::sin(s.pitch);
+				const RE::NiPoint3 fwd{ std::sin(yaw) * cp, std::cos(yaw) * cp, -sp };
+				a_pos = a_boat + RE::NiPoint3{ 0.0f, 0.0f, s.height } - fwd * s.dist;
+			}
+			a_look = look;
+		}
+		void HelmCamPos(RE::NiPoint3& a_pos) const { if (hcActive_) a_pos = hcPos_; }
+		void HelmCamRot(RE::NiQuaternion& a_rot) const { if (hcActive_) a_rot = hcRot_; }
+		bool hcActive_{ false }, hcHave_{ false };
+		std::uint32_t hcFrame_{ ~0u };
+		double hcLast_{ 0.0 };
+		float hcYaw_{ 0.0f }, hcPitch_{ 0.0f }, hcYawT_{ 0.0f }, hcPitchT_{ 0.0f }, hcDist_{ 0.0f }, hcIdle_{ 0.0f };
+		int hcShot_{ -1 };
+		float hcShotT_{ 0.0f }, hcShotYaw_{ 0.0f };
+		int hcTiny_{ 0 }, hcGraceLogs_{ 0 }, hcSpinLogs_{ 0 };
+		float hcLastCamYaw_{ 0.0f }, hcLastBoatYaw_{ 0.0f }, hcFast_{ 0.0f };
+		float hcSinceSit_{ 0.0f }, hcPosTick_{ 0.0f };
+		int hcPosLogs_{ 0 };
+		double hcBoatSeen_{ 0.0 };
+		float hcBoatYaw_{ 0.0f };
+		RE::NiPoint3 hcBoat_{};
+		bool hcHaveBoat_{ false }, hcInGrace_{ false };
+		float hcDiagT_{ 0.0f };
+		bool hcRecentering_{ false };
+		RE::NiPoint3 hcPos_{}, hcPivot_{}, hcFly_{};
+		RE::NiQuaternion hcRot_{ 1.0f, 0.0f, 0.0f, 0.0f };
 		// the seated pose LatePlace draws the boat at (kept in step with it)
 		void DrawPose(RE::NiPoint3& a_at, RE::NiMatrix3& a_rot) const
 		{
-			a_at = drawMode_ == 0 && havePrev_ ? prevAt_ : lastAt_;
-			a_rot = drawMode_ == 0 && havePrev_ ? prevRot_ : lastRot_;
-			if (drawMode_ == 0 && havePrev_ && (lastAt_ - prevAt_).Length() < 60.0f) {
+			a_at = DrawModeNow() == 0 && havePrev_ ? prevAt_ : lastAt_;
+			a_rot = DrawModeNow() == 0 && havePrev_ ? prevRot_ : lastRot_;
+			if (DrawModeNow() == 0 && havePrev_ && (lastAt_ - prevAt_).Length() < 60.0f) {
 				a_at = prevAt_ + (lastAt_ - prevAt_) * drawLead_;
 				if (drawLead_ >= 0.5f) a_rot = lastRot_;
 			}
@@ -2471,7 +4971,7 @@ namespace
 			const auto path = *dir / "RowRim_Motion.log";
 			mlOut_.open(path, std::ios::out | std::ios::trunc);
 			if (!mlOut_) { Print("RowRim: motion log: could not open the file"); return; }
-			mlOut_ << "RowRim motion log (" << kVersionShort << "), draw mode " << drawMode_ << ", lead " << drawLead_ << "\n"
+			mlOut_ << "RowRim motion log (" << kVersionShort << "), draw mode " << DrawModeNow() << ", lead " << drawLead_ << "\n"
 				   << "Per frame (B = after the third person camera update, what the game draws this frame):\n"
 				   << " f frame | dt game frame time ms | spd boat speed | ph stroke phase | thr thrust\n"
 				   << " sim = our sim step this frame (units) | drw = the drawn boat's step | exp = speed x dt\n"
@@ -2511,132 +5011,6 @@ namespace
 			mlA_.phase = oarPhase_;
 			mlA_.thrust = lastThrust_;
 			if (auto* player = RE::PlayerCharacter::GetSingleton()) mlA_.glued = player->GetPosition();
-		}
-		// B0: right before the game's third person update; B1: right after it (before our fix-ups)
-		void MotionCamPre(RE::ThirdPersonState* a_tps)
-		{
-			if (mlLeft_ <= 0.0f || !a_tps) return;
-			mlFr0_ = a_tps->freeRotation.x;
-			// v1.7.15: what the game really drew last frame: the camera node, against what our camera hook left in translation
-			mlRc_ = -1.0f;
-			if (auto* pcam = RE::PlayerCamera::GetSingleton(); pcam && pcam->cameraRoot && mlHaveCamSet_) mlRc_ = (pcam->cameraRoot->world.translate - mlCamSet_).Length();
-			// v1.7.18: the camera node as the game drew it last frame, against the boat as drawn last frame (the shake you see)
-			mlOutHave_ = false;
-			if (auto* pcam = RE::PlayerCamera::GetSingleton(); pcam && pcam->cameraRoot && mlHavePrev_) {
-				mlOutRel_ = mlPrevBoatRot_.Transpose() * (pcam->cameraRoot->world.translate - mlPrevBoat_);
-				mlOutHave_ = true;
-			}
-			auto* player = RE::PlayerCharacter::GetSingleton();
-			if (auto* p3 = player ? player->Get3D(false) : nullptr) mlP3dCam_ = p3->world.translate;
-		}
-		void MotionCamGame(RE::ThirdPersonState* a_tps)
-		{
-			if (mlLeft_ <= 0.0f || !a_tps) return;
-			mlFr1_ = a_tps->freeRotation.x;
-		}
-		// B: after our fix-ups and the late boat placement: one line
-		void MotionB(RE::ThirdPersonState* a_tps)
-		{
-			if (mlLeft_ <= 0.0f || !mlOut_.is_open() || !a_tps) return;
-			const float dt = mlA_.have ? mlA_.dt : 0.0f;
-			mlLeft_ -= (dt > 0.0f ? dt : 0.016f);
-			auto* player = RE::PlayerCharacter::GetSingleton();
-			auto* proot = player ? player->Get3D(false) : nullptr;
-			if (!visual_ || !visual_->parent || !proot) {
-				mlOut_ << std::format("f{} no boat drawn or no rower 3D\n", mlFrame_++);
-				if (mlLeft_ <= 0.0f) MotionLogEnd();
-				return;
-			}
-			const RE::NiPoint3 boat = visual_->world.translate;
-			const RE::NiMatrix3 inv = visual_->world.rotate.Transpose();
-			const RE::NiPoint3 seat = boat + visual_->world.rotate * SeatPos();
-			const RE::NiPoint3 row = inv * (proot->world.translate - seat);
-			const RE::NiPoint3 cam = a_tps->translation;
-			const RE::NiPoint3 camRel = inv * (cam - boat);
-			// camera heading / pitch from this frame's ThirdPersonState rotation
-			const auto& q = a_tps->rotation;
-			const RE::NiPoint3 fwd{ 2.0f * (q.x * q.y - q.w * q.z), 1.0f - 2.0f * (q.x * q.x + q.z * q.z), 2.0f * (q.y * q.z + q.w * q.x) };
-			const float yaw = std::atan2(fwd.x, fwd.y) * 57.2958f;
-			const float pitch = std::asin(std::clamp(fwd.z, -1.0f, 1.0f)) * 57.2958f;
-			auto* pc = RE::PlayerControls::GetSingleton();
-			const bool look = pc && (std::fabs(pc->data.lookInputVec.x) > 1.0e-4f || std::fabs(pc->data.lookInputVec.y) > 1.0e-4f);
-			const float fr2 = a_tps->freeRotation.x;
-			const float simStep = mlA_.have ? (mlA_.sim - mlA_.simPrev).Length() : 0.0f;
-			const float drwStep = mlHavePrev_ ? (boat - mlPrevBoat_).Length() : 0.0f;
-			const float expStep = std::fabs(mlA_.speed) * dt;
-			const float dRow = mlHavePrev_ ? (row - mlPrevRow_).Length() : 0.0f;
-			const float dCam = mlHavePrev_ ? (camRel - mlPrevCamRel_).Length() : 0.0f;
-			const float dYaw = mlHavePrev_ ? std::remainder(yaw - mlPrevYaw_, 360.0f) : 0.0f;
-			const float dPit = mlHavePrev_ ? pitch - mlPrevPitch_ : 0.0f;
-			const float eng = mlA_.have ? (mlP3dCam_ - mlA_.glued).Length() : -1.0f;
-			if (dt > 0.0f) mlDtAvg_ = mlDtAvg_ <= 0.0f ? dt : mlDtAvg_ * 0.95f + dt * 0.05f;
-			std::string flags;
-			if (mlHavePrev_ && !look && dCam > 1.0f) { flags += " CAM"; ++mlSum_.cam; }
-			if (mlHavePrev_ && !look && std::fabs(dYaw) > 0.3f) { flags += " TURN"; ++mlSum_.turn; }
-			if (mlHavePrev_ && std::fabs(drwStep - expStep) > 1.5f) { flags += " BOAT"; ++mlSum_.boat; }
-			if (mlHavePrev_ && dRow > 1.0f) { flags += " ROWER"; ++mlSum_.rower; }
-			if (std::fabs(std::remainder(fr1Minus(fr2), 6.2831853f)) > 1.0e-5f) { flags += " ORBIT"; ++mlSum_.orbit; }
-			if (dt > 0.0f && mlDtAvg_ > 0.0f && dt > 1.6f * mlDtAvg_ && mlFrame_ > 10) { flags += " DT"; ++mlSum_.dtSpike; }
-			// v1.7.16: the rower's bones on the drawn boat (pelvis, head, the Camera3rd bone the game camera follows): a kink
-			// (second difference over 0.8 in a frame) is the clip itself jumping, e.g. at its loop seam
-			std::string bones;
-			{
-				static constexpr const char* kBones[3] = { "NPC Pelvis [Pelv]", "NPC Head [Head]", "Camera3rd [Cam3]" };
-				static constexpr const char* kShort[3] = { "pel", "head", "cam3" };
-				for (int i = 0; i < 3; ++i) {
-					auto* n = proot->GetObjectByName(kBones[i]);
-					if (!n) continue;
-					const RE::NiPoint3 b = inv * (n->world.translate - boat);
-					float k = 0.0f;
-					if (mlBoneN_[i] >= 2) k = (b - mlBone1_[i] * 2.0f + mlBone2_[i]).Length();
-					mlBone2_[i] = mlBone1_[i];
-					mlBone1_[i] = b;
-					mlBoneN_[i] = (std::min)(mlBoneN_[i] + 1, 2);
-					bones += std::format(" {} {:.1f} {:.1f} {:.1f} k {:.2f}", kShort[i], b.x, b.y, b.z, k);
-					if (k > 0.8f && i < 2) { flags += std::format(" BONE-{} {:.1f}", kShort[i], k); ++mlSum_.bone; }
-				}
-			}
-			// v1.7.17: the camera as the game drew it last frame (our GetTranslation answer), against the boat then: its change is the
-			// shake you see. JERK = it moved over 0.7 in a frame without look input.
-			std::string outTxt = " | out -";
-			if (mlOutHave_) {
-				const float dOut = mlPrevOutHave_ ? (mlOutRel_ - mlPrevOutRel_).Length() : 0.0f;
-				outTxt = std::format(" | out {:.1f} {:.1f} {:.1f} dOut {:.2f}", mlOutRel_.x, mlOutRel_.y, mlOutRel_.z, dOut);
-				if (mlPrevOutHave_ && !look && dOut > 0.7f) { flags += std::format(" JERK {:.1f}", dOut); ++mlSum_.jerk; }
-				mlSum_.dOutMax = (std::max)(mlSum_.dOutMax, look ? 0.0f : dOut);
-				mlPrevOutRel_ = mlOutRel_;
-				mlPrevOutHave_ = true;
-			} else {
-				mlPrevOutHave_ = false;
-			}
-			bones += outTxt;
-			if (mlRc_ > 1.0f) { flags += std::format(" DRAWNCAM {:.1f}", mlRc_); ++mlSum_.drawnCam; }  // v1.7.15: the drawn camera was not where the hook left it
-			if (auto* href = Ref(); href && href->Get3D() && carrierOn_ && !href->Get3D()->flags.any(RE::NiAVObject::Flag::kHidden)) { flags += " HULL3D"; ++mlSum_.hull3d; }  // v1.7.15: the collision hull drawn
-			if (sgFixR_ > 0.0f) flags += std::format(" fixR {:.2f}", sgFixR_);  // v1.7.14: seat guard put the rower back
-			if (sgFixC_ > 0.0f) flags += std::format(" fixC {:.1f}", sgFixC_);  // v1.7.14: seat guard held the camera
-			mlOut_ << std::format("f{} dt {:.1f} spd {:.0f} ph {:.2f} thr {:.0f} | sim {:.2f} drw {:.2f} exp {:.2f} | row {:.1f} {:.1f} {:.1f} dRow {:.2f} | cam {:.1f} {:.1f} {:.1f} dCam {:.2f} | yaw {:.2f} pit {:.2f} dYaw {:.2f} dPit {:.2f} look {} zoom {:.2f} | fr0 {:.4f} fr1 {:.4f} fr2 {:.4f} | eng {:.2f} |{} | seated {} rowing {}{}{}\n",
-				mlFrame_, dt * 1000.0f, mlA_.speed, mlA_.phase, mlA_.thrust, simStep, drwStep, expStep, row.x, row.y, row.z, dRow, camRel.x, camRel.y, camRel.z, dCam,
-				yaw, pitch, dYaw, dPit, look ? 1 : 0, a_tps->currentZoomOffset, mlFr0_, mlFr1_, fr2, eng, bones, seated_ ? 1 : 0, rowAnimOn_ ? 1 : 0, mlA_.have ? "" : " (no sim step)",
-				flags.empty() ? std::string() : " <<" + flags);
-			mlSum_.frames++;
-			mlSum_.dtMin = (std::min)(mlSum_.dtMin, dt);
-			mlSum_.dtMax = (std::max)(mlSum_.dtMax, dt);
-			mlSum_.dCamMax = (std::max)(mlSum_.dCamMax, look ? 0.0f : dCam);
-			mlSum_.dRowMax = (std::max)(mlSum_.dRowMax, dRow);
-			mlSum_.boatErrMax = (std::max)(mlSum_.boatErrMax, mlHavePrev_ ? std::fabs(drwStep - expStep) : 0.0f);
-			if (mlSum_.frames >= 120) MotionSummary();
-			mlCamSet_ = cam;
-			mlHaveCamSet_ = true;
-			mlPrevBoatRot_ = visual_->world.rotate;
-			mlPrevBoat_ = boat;
-			mlPrevRow_ = row;
-			mlPrevCamRel_ = camRel;
-			mlPrevYaw_ = yaw;
-			mlPrevPitch_ = pitch;
-			mlHavePrev_ = true;
-			mlA_.have = false;
-			++mlFrame_;
-			if (mlLeft_ <= 0.0f) MotionLogEnd();
 		}
 
 	private:
@@ -2693,7 +5067,7 @@ namespace
 			auto* lref = Ref();
 			const bool bodyLive = body_ && !needInit_ && root_ && lref && lref->Get3D() == root_;
 			if (!bodyLive && body_) {
-				body_ = nullptr;
+				body_.reset();
 				needInit_ = true;
 			}
 			if (seated_ || !bodyLive) {
@@ -2701,22 +5075,23 @@ namespace
 				// vehicle position to stay glued to the view"): the boat one frame behind the glue. The row stroke's surge changes
 				// that one frame of travel every stroke, which is why it only showed while rowing. rr draw now|player to compare.
 				if (!havePose_) return;
-				RE::NiPoint3 at = drawMode_ == 0 && havePrev_ ? prevAt_ : lastAt_;
-				RE::NiMatrix3 rot = drawMode_ == 0 && havePrev_ ? prevRot_ : lastRot_;
+				RE::NiPoint3 at = DrawModeNow() == 0 && havePrev_ ? prevAt_ : lastAt_;
+				RE::NiMatrix3 rot = DrawModeNow() == 0 && havePrev_ ? prevRot_ : lastRot_;
 				// v1.6.6: drawLead_ of the way from last frame's pose to this frame's: the boat (and the passengers pinned to it)
 				// no longer fall a whole frame of travel behind the rower when rowing starts, only a sliver (rr "lead 0..1")
-				if (drawMode_ == 0 && havePrev_ && (lastAt_ - prevAt_).Length() < 60.0f) {
+				if (DrawModeNow() == 0 && havePrev_ && (lastAt_ - prevAt_).Length() < 60.0f) {
 					at = prevAt_ + (lastAt_ - prevAt_) * drawLead_;
 					if (drawLead_ >= 0.5f) rot = lastRot_;
 				}
 				auto* player = RE::PlayerCharacter::GetSingleton();
-				if (auto* proot = drawMode_ == 2 && seated_ && player ? player->Get3D(false) : nullptr) {
+				if (auto* proot = DrawModeNow() == 2 && seated_ && player ? player->Get3D(false) : nullptr) {
 					const RE::NiPoint3 fromPlayer = proot->world.translate - lastRot_ * SeatPos();
 					if ((fromPlayer - lastAt_).Length() < 60.0f) at = fromPlayer;
 				}
 				PlaceNode(visual_.get(), at, rot);
+				drawAt_ = at; drawRot_ = rot; haveDraw_ = true;  // v1.8.57d: ReplaceRiding keeps this pose
 				for (RE::NiAVObject* n = visual_->parent; n; n = n->parent) n->UpdateWorldBound();
-				Gear::LatePin(visual_.get());  // v1.7.12: the bedroll and supplies rock with the drawn boat
+				if (kind_ == kKindRow) Gear::LatePin(visual_.get());  // v1.7.12: the bedroll rocks with the drawn boat (v1.8.26: the rowboat's)
 				if (seated_ && player) player->SetGraphVariableBool("bHumanoidFootIKDisable", true);  // v1.6.6: again here, right before the draw
 				if (seated_) Crew::LatePin(CrewPose(at, rot));  // v1.6.4: the passengers onto the boat as it is drawn
 				if (rowAnimOn_) ViewDiag(rot);
@@ -2729,8 +5104,9 @@ namespace
 			const RE::NiPoint3 at = bp - Rotate(qt, posOff_) - Rotate(qt, RE::NiPoint3{ 0.0f, 0.0f, kCollisionLift });
 			if (flip_ != autoFlip_) qt = Conj(qt);  // back to the node convention
 			PlaceNode(visual_.get(), at, ToMatrix(qt));
+			drawAt_ = at; drawRot_ = ToMatrix(qt); haveDraw_ = true;  // v1.8.57d
 			for (RE::NiAVObject* n = visual_->parent; n; n = n->parent) n->UpdateWorldBound();
-			Gear::LatePin(visual_.get());  // v1.7.12
+			if (kind_ == kKindRow) Gear::LatePin(visual_.get());  // v1.7.12
 			if (Crew::Lingering()) Crew::LatePin(CrewPose(at, ToMatrix(qt)));  // v1.7.21: the waiting passengers on the drawn boat
 		}
 		void SetWaterBlock(const std::string& a_mode)
@@ -2751,6 +5127,7 @@ namespace
 			a_out = lastAt_;
 			return true;
 		}
+		void SetGlide(bool a_on) { glideOn_ = a_on; Print(std::format("RowRim: seat glide {}", a_on ? "on" : "off")); }
 		void SetNudge(bool a_on) { nudgeOn_ = a_on; Print(std::format("RowRim: stand-up nudge {}", a_on ? "on" : "off")); }
 		void SetLate(bool a_on) { lateOn_ = a_on; Print(std::format("RowRim: model drawn at the {}", a_on ? "collision body (late, v0.3.3)" : "target pose (v0.3.2)")); }
 
@@ -2839,7 +5216,7 @@ namespace
 		void ResetSettings()
 		{
 			ResetRowSettings();
-			heightOff_ = 0.0f;
+			heightOff_ = kind_ == kKindSail ? kSailHeight : 0.0f;  // v1.8.27c
 			paint_ = Paint::kBlue;
 			paintedRoot_ = nullptr;
 			if (!docksLoaded_) LoadDocks();
@@ -2851,12 +5228,17 @@ namespace
 		void Update(float a_dt)
 		{
 			if (!rowLoaded_) LoadRowSettings();  // v1.7.8
+			const bool act = IsActive();          // v1.8.26: the boat in use (the others: their own frame only)
+			if (act) {
 			MotionA0(a_dt);                       // v1.7.13: motion log
 			if (seated_) Pad::Zoom(a_dt);         // v1.7.8: controller zoom while seated
 			TendModCompat(seated_);               // v1.7.12: True Directional Movement paused while seated (OAS 56.43)
 			Gear::TendNum(a_dt);                  // v1.7.11: oas "num gear"
 			Wake::TendNum(a_dt);                  // v1.7.43: oas "num stern"
-			Gear::TendLoad(refId_ ? Ref() : nullptr, a_dt);  // v1.7.21: saved / stray beds and supplies removed after a load, boat or not
+			{
+				auto& row = Of(kKindRow);  // v1.8.26: the bed is the rowboat's only
+				Gear::TendLoad(row.refId_ ? row.Ref() : nullptr, a_dt);  // v1.7.21: saved / stray beds (and old fishing leftovers) removed after a load, boat or not
+			}
 			TendLoadUnstick(a_dt);  // v1.7.41
 			TendWalkFix(a_dt);
 			{
@@ -2869,7 +5251,10 @@ namespace
 					pc.speed = speed_;
 					pc.waterZ = waterZ_;
 					pc.water = haveWater_;
+					pc.onBoat = OnBoat();  // v1.8.0
 				}
+				pc.onBoat = pc.onBoat || (Plankton::LoadSettings(), Plankton::g_set.everywhere);  // v1.8.79: the plankton also away from the boat, unless switched off
+				Plankton::g_hullX = Kind() == kKindSail ? (DimsOf(kKindSail).feelWidth / ModelScale()) / DimsOf(kKindRow).feelWidth : 1.0f;  // v1.8.90: this boat's hull in the plankton's eyes (the outline is the rowboat's, widened for the sailing boat)
 				Stage("Plankton::Tick");
 				Plankton::Tick(a_dt, pc);
 				Stage("Wake::Tick");
@@ -2878,14 +5263,24 @@ namespace
 				Ribbon::Tick(a_dt);  // v1.7.60: the oars' glowing swoosh
 				Stage("TestHull::Update (after plankton and wake)");
 			}
-			Stage("TestHull::TendDocks");
-			TendDocks(a_dt);  // v1.7.8
-			Stage("Legacy::Tend");
-			Legacy::Tend(a_dt, [this](RE::FormID a_id) { return a_id == refId_ || a_id == carrierId_ || IsPickRef(a_id) || a_id == LampLightId() || LakeBoats::IsOurs(a_id); },
-				HaveBoat() ? &pos_ : nullptr);  // v1.7.8; v1.7.9: our prompts, lantern light and anything by our boat are never old pieces
-			Stage("LakeBoats::SweepStrayLamps");
-			LakeBoats::SweepStrayLamps(a_dt, LampLightId());  // v1.7.69: lights and lanterns left over the lakes (v1.7.70: and crew in the water)
+			}  // act
+			if (kind_ == kKindRow || (kind_ == kKindSail && SailEnabled())) {  // v1.8.26: the docks keep the rowboat (v1.8.87: and the sailing boat, at its own docks)
+				Stage("TestHull::TendDocks");
+				TendDocks(a_dt);  // v1.7.8
+			}
+			Stage("TestHull::TendHome");
+			TendHome(a_dt);  // v1.8.47: each boat's own dock
+			if (act) {
+				Stage("Legacy::Tend");
+				Legacy::Tend(a_dt, [](RE::FormID a_id) { return IsOursAny(a_id) || LakeBoats::IsOurs(a_id); },
+					HaveBoat() ? &pos_ : nullptr);  // v1.7.8; v1.7.9: our prompts, lantern light and anything by our boat are never old pieces (v1.8.26: all three boats')
+				Stage("LakeBoats::SweepStrayLamps");
+				LakeBoats::SweepStrayLamps(a_dt, Of(kKindRow).LampLightId());  // v1.7.69: lights and lanterns left over the lakes (v1.7.70: and crew in the water)
+				Stage("TestHull::SweepStrayCarriers");
+				SweepStrayCarriers(a_dt);  // v1.8.31e
+			}
 			if (!refId_) return;
+			if (!rebased_) RebaseHull();  // v1.8.66
 			auto* ref = Ref();
 			if (!ref) { Forget(); return; }
 			TendStow(a_dt);
@@ -2893,8 +5288,13 @@ namespace
 			auto* root = ref->Get3D();
 			const float dt = std::clamp(a_dt, 0.001f, 0.1f);
 			rideTime_ += dt;
+			if (standGlide_ && rideTime_ - standAt_ > 1.0f) {  // v1.8.71: the glide was not ticked (3D gone, not active): let go
+				standGlide_ = false;
+				if (auto* pl = RE::PlayerCharacter::GetSingleton()) pl->SetCollision(true);
+				logger::info("Seat: glide out cut short");
+			}
 			if (!root) {  // 3D not loaded yet (or reloading after a cell hop)
-				body_ = nullptr;
+				body_.reset();
 				root_ = nullptr;
 				needInit_ = true;
 				if (carrierOn_) CoastFrame(dt);  // v1.0.1: keep going while the collision reloads
@@ -2910,7 +5310,7 @@ namespace
 			if (root != root_) {  // the 3D was (re)loaded, e.g. after a cell hop: the old body pointer is gone
 				if (root_) logger::info("Hull: 3D reloaded ({}), setting the body up again", hopsSinceLoad_ ? "after a cell hop" : "by the engine");
 				root_ = root;
-				body_ = nullptr;
+				body_.reset();
 				needInit_ = true;
 			}
 			if (!needInit_ && body_) {  // same 3D, but the body was put back to fixed (the engine re-adds it on some moves)
@@ -3023,8 +5423,10 @@ namespace
 			ref->data.angle = RE::NiPoint3{ 0.0f, 0.0f, yaw_ };
 			if (writeNode_) PlaceNode(root, at + rot * RE::NiPoint3{ 0.0f, 0.0f, kCollisionLift }, rot);  // the (hidden) collision model
 			if (seated_) GlueSeat(at, rot, dYaw, dt);
-			else {
+			else if (act && TendStandGlide(at, rot)) {}  // v1.8.71
+			else if (act) {
 				TendNudge(dt);
+				TendCarry(at, rot, dt);  // v1.8.9: standing / jumping aboard while it moves
 				Crew::Linger(CrewPose(at, rot), dt);  // v1.7.21: passengers wait seated until the boat settles
 			}
 			if (!carrierOn_) TendHeld(at, rot, root, dt);
@@ -3038,25 +5440,30 @@ namespace
 			lastAt_ = at;
 			lastRot_ = rot;
 			havePose_ = true;
-			Gear::Tend(ref, at, rot, yaw_ + (bowFlip_ ? kPi : 0.0f), dt, seated_);  // v1.7.0: the fishing supplies ride along
-			TendPicks(dt);  // v1.7.9: Board / Steer / Row prompts
+			const bool row = kind_ == kKindRow;  // v1.8.26: the bed is the rowboat's only
+			if (row && HullCellLoaded()) Gear::Tend(ref, at, rot, yaw_ + (bowFlip_ ? kPi : 0.0f), dt, seated_);  // v1.7.0: the bedroll rides along
+			TendPicks(dt);  // v1.7.9: Board / Steer / Row prompts (v1.8.26: the boat in use only)
 			TendSitWait(dt);  // v1.7.25
-			TendFishWatch(dt);  // v1.7.26
+			TendSeatSwitch(dt);  // v1.8.29c
 			TendUnstick(dt);    // v1.7.31
-			if (visual_ && (rollCulledOn_ != visual_.get() || rollCulled_ != Gear::BedrollShown())) {  // v1.7.11: the roll hidden once it is out
+			if (row && visual_ && (rollCulledOn_ != visual_.get() || rollCulled_ != Gear::BedrollShown())) {  // v1.7.11: the roll hidden once it is out
 				rollCulledOn_ = visual_.get();                                                          // v1.7.12: only while the bed is really there
 				rollCulled_ = Gear::BedrollShown();
 				if (auto* roll = FindShape(visual_.get(), "RowRim_Clutter_Bedroll")) roll->SetAppCulled(rollCulled_);
 			}
-			TendSleepingBag(dt);  // v1.7.48
+			if (row) TendSleepingBag(dt);  // v1.7.48
+			TendSail(dt);         // v1.7.73
+			TendAnchor(dt);       // v1.8.29: the sailing boat's anchor
 			TendOars(dt);  // v0.8.4: here, after the player's update, as OAS TendBakedBoatOars (the camera hook never called it)
-			TendHullRipples(dt);  // v1.7.43
+			if (act) TendHullRipples(dt);  // v1.7.43
 			TendOarlocks();       // v1.7.52
+			if (!act) return;     // v1.8.26: the rest is the player's, on the boat in use
 			TendFootIK();         // v1.7.52
 			TendTameFish(dt);     // v1.7.52
 			if (havePose_) {  // v1.7.54: bumping the lake boats
 				const float hit = LakeBoats::BumpPlayerBoat(pos_, yaw_ + (bowFlip_ ? kPi : 0.0f), speed_, dt);
 				if (hit > 0.0f) dipVel_ -= 45.0f * hit;
+				BumpOwnBoats(dt);  // v1.8.37
 			}
 			MotionA1();    // v1.7.13
 
@@ -3064,6 +5471,45 @@ namespace
 		}
 
 	private:
+		// v1.8.37: our own boats bump each other (the rowboat waiting at a dock, a boat left out): each a capsule along its
+		// keel (half length less half beam, the beam), pushed apart, the smaller boat giving way the more; the boat in use
+		// loses the way it had into the other
+		void BumpOwnBoats(float a_dt)
+		{
+			const auto& da = Dims();
+			const float hdA = yaw_ + (bowFlip_ ? kPi : 0.0f);
+			const float fx = std::sin(hdA), fy = std::cos(hdA);
+			const float rA = da.feelWidth, hA = (std::max)(1.0f, da.feelLen - da.feelWidth);
+			for (int k = 0; k < kKindCount; ++k) {
+				if (k == kind_) continue;
+				auto& o = Of(k);
+				if (!o.havePose_ || !o.HaveBoat() || !o.refId_) continue;
+				const auto& db = o.Dims();
+				const float rB = db.feelWidth, hB = (std::max)(1.0f, db.feelLen - db.feelWidth);
+				const float ddx = o.pos_.x - pos_.x, ddy = o.pos_.y - pos_.y;
+				const float reach = hA + hB + rA + rB;
+				if (ddx * ddx + ddy * ddy > reach * reach) continue;
+				const float hdB = o.yaw_ + (o.bowFlip_ ? kPi : 0.0f), gx = std::sin(hdB), gy = std::cos(hdB);
+				float px, py, qx, qy;
+				LakeBoats::Bump::SegClosest(pos_.x - fx * hA, pos_.y - fy * hA, pos_.x + fx * hA, pos_.y + fy * hA,
+					o.pos_.x - gx * hB, o.pos_.y - gy * hB, o.pos_.x + gx * hB, o.pos_.y + gy * hB, px, py, qx, qy);
+				float nx = px - qx, ny = py - qy;  // from the other boat to this one
+				const float dist = std::sqrt(nx * nx + ny * ny);
+				if (dist >= rA + rB) continue;
+				if (dist > 0.01f) { nx /= dist; ny /= dist; } else { nx = -gy; ny = gx; }
+				const float depth = rA + rB - dist;
+				const float share = std::clamp(rA / (rA + rB), 0.2f, 0.8f);  // the bigger boat moves the less
+				pos_.x += nx * depth * (1.0f - share); pos_.y += ny * depth * (1.0f - share);
+				o.pos_.x -= nx * depth * share; o.pos_.y -= ny * depth * share;
+				const float into = (fx * nx + fy * ny) * speed_;  // < 0: going into it
+				if (into < -2.0f) {
+					speed_ -= (fx * nx + fy * ny) * into * 0.7f;
+					if (bumpLog_ <= 0.0f) { logger::info("Bump: {} into the {} ({:.0f})", Dims().label, db.label, -into); bumpLog_ = 2.0f; }
+					dipVel_ -= (std::min)(-into, 200.0f) * 0.08f;
+				}
+			}
+			bumpLog_ -= a_dt;
+		}
 		// v1.0.1: one step of the boat's target pose (sim, world, motion). Also run while the hull's collision 3D reloads after a
 		// cell hop, so the boat (drawn by the carrier) and the seated player keep moving: those frames used to freeze it (the
 		// stutter every cell crossing).
@@ -3071,9 +5517,12 @@ namespace
 		{
 			a_dYaw = 0.0f;
 			lastThrust_ = 0.0f;
+			sailLeeWant_ = sailHeelWant_ = 0.0f;  // v1.8.9j: SailDrive sets them while the sail draws
 			if (helm_) {
-				if (seated_ && (seatKind_ == SeatKind::kRower || Crew::Rower())) RowSim(dt);  // v1.7.9: or a crew rower, you at the stern
-				else HelmSim(dt);
+				// v1.8.9l: at the helm under a trimmed sail W / S work the sail, so a crew rower does not row
+				if (seated_ && (seatKind_ == SeatKind::kRower || (Crew::Rower() && !(SailManual() && SailDrawing())))) RowSim(dt);  // v1.7.9: or a crew rower, you at the stern
+				else { rowWant_ = false; HelmSim(dt); }
+				SailDrive(dt);  // v1.7.74: the wind in the sail, seated only
 			}
 			TendRowAnim(dt);
 			rowShiftW_ = std::clamp(rowShiftW_ + (seated_ && seatKind_ == SeatKind::kRower && rowAnimOn_ ? 1.0f : -1.0f) * dt / 0.5f, 0.0f, 1.0f);
@@ -3085,6 +5534,11 @@ namespace
 				const float hd = yaw_ + (bowFlip_ ? kPi : 0.0f);
 				pos_.x += std::sin(hd) * speed_ * dt;
 				pos_.y += std::cos(hd) * speed_ * dt;
+				// v1.8.9j: leeway: the boat slides to leeward under sail (starboard = (cos, -sin)); the side feelers still stop it
+				sailLee_ += (sailLeeWant_ - sailLee_) * (1.0f - std::exp(-1.0f * dt));
+				sailHeel_ += (sailHeelWant_ - sailHeel_) * (1.0f - std::exp(-0.8f * dt));
+				pos_.x += std::cos(hd) * sailLee_ * dt;
+				pos_.y -= std::sin(hd) * sailLee_ * dt;
 			}
 			// rock amplitude eased toward the setting (about 1 s), so a toggle never kicks the deck
 			const float k = (std::min)(1.0f, dt * 2.0f);
@@ -3097,6 +5551,55 @@ namespace
 			roll_ = ampRoll_ * std::sin(w * t_) + mRoll;      // rrt "rock N" (the step 1 test rock) on top
 			pitch_ = ampPitch_ * std::sin(w * 0.73f * t_ + 1.1f) + mPitch;
 			heave_ = ampHeave_ * std::sin(w * 1.25f * t_ + 0.4f) + mHeave;
+			// v1.8.10: the OceanRim sea under the hull, eased: a big hull answers more slowly than a small one
+			{
+				const auto& dims = Dims();
+				float sh = 0.0f, sp = 0.0f, sr = 0.0f;
+				const float water = pos_.z - WaterZ() - heightOff_;
+				const int sk = Kind();  // v1.8.26: each boat its own [Sea] settings
+				const auto& tune = SeaLink::T(sk);
+				const bool seaOk = SeaLink::Motion(pos_.x, pos_.y, water, yaw_, dims.feelLen * 0.8f, dims.feelWidth, sh, sp, sr, sk);
+				if (!seaOk) sh = sp = sr = 0.0f;
+				const bool act = IsActive();
+				if (act) {
+					SeaLink::g_playerOk = seaOk;
+					SeaLink::g_rawH = sh;  // v1.8.13: shown on the Sea page
+				}
+				SeaLink::Step(seaState_, sh, sp, sr, dt, dims.feelLen > 600.0f ? 1.5f : 1.0f, sk);  // v1.8.11: a soft spring, was a plain ease
+				seaHeave_ = seaState_.h;
+				seaPitch_ = seaState_.p;
+				seaRoll_ = seaState_.r;
+				if (act) {
+					SeaLink::g_outH = seaHeave_;
+					SeaLink::g_outP = seaPitch_;
+					SeaLink::g_outR = seaRoll_;
+				}
+				heave_ += seaHeave_;
+				pitch_ += seaPitch_;
+				roll_ += seaRoll_;
+				if (seaOk) {
+					// v1.8.15: under way the bow rides up its own bow wave and the stern squats
+					const float sp01 = std::clamp(std::abs(speed_) / 300.0f, 0.0f, 1.0f);
+					const float ahead = (speed_ >= 0.0f ? 1.0f : -1.0f) * (bowFlip_ ? -1.0f : 1.0f);
+					pitch_ += tune.trim * 0.0174533f * sp01 * sp01 * ahead;
+					heave_ -= tune.squat * sp01;
+					// the bow digging into a wave throws up a splash
+					const float hl = dims.feelLen * 0.9f;
+					const float bx = pos_.x + std::sin(yaw_) * hl, by = pos_.y + std::cos(yaw_) * hl;
+					float bz = 0.0f;
+					if (bowCool_ > 0.0f) bowCool_ -= dt;
+					if (SeaLink::g_surface && SeaLink::g_surface(bx, by, water, &bz)) {
+						const float imm = bz - (water + heave_ + std::sin(pitch_) * hl);
+						const float rate = dt > 0.0f ? (imm - bowImm_) / dt : 0.0f;
+						if (imm > 2.0f && rate > 25.0f && bowCool_ <= 0.0f) {
+							SeaLink::Splash(bx, by, water, dims.feelWidth * 1.3f, std::clamp(rate * 0.12f + sp01 * 6.0f, 3.0f, 22.0f), 1);
+							bowCool_ = 0.5f;
+						}
+						bowImm_ = imm;
+					}
+				}
+				SeaLink::Hull(1u + 4u * static_cast<std::uint32_t>(sk), pos_.x, pos_.y, yaw_, dims.feelLen, dims.feelWidth, pos_.z + heave_ - WaterZ() - heightOff_);  // v1.8.26: ids 1, 5, 9 (lake boats' have bit 2)
+			}
 
 			a_rot = RzM(yaw_) * (RxM(pitch_) * RyM(roll_));
 			a_at = RE::NiPoint3{ pos_.x, pos_.y, pos_.z + heave_ };
@@ -3109,8 +5612,10 @@ namespace
 			RE::NiMatrix3 rot;
 			StepTarget(dt, at, rot, dYaw);
 			if (seated_) GlueSeat(at, rot, dYaw, dt);
-			else {
+			else if (IsActive() && TendStandGlide(at, rot)) {}  // v1.8.71
+			else if (IsActive()) {
 				TendNudge(dt);
+				TendCarry(at, rot, dt);  // v1.8.9: the hull's collision is reloading (a cell hop): nothing holds you, we carry you
 				Crew::Linger(CrewPose(at, rot), dt);  // v1.7.21
 			}
 			if (carrierOn_) TendCarrier(at, rot, dt);
@@ -3121,7 +5626,7 @@ namespace
 			lastRot_ = rot;
 			haveLastTarget_ = false;  // the body starts over from its new 3D
 			TendOars(dt);
-			MotionA1();  // v1.7.14: the motion log sees coast frames (cell hops) too
+			if (IsActive()) MotionA1();  // v1.7.14: the motion log sees coast frames (cell hops) too
 		}
 
 		RE::TESObjectREFR* Ref() const
@@ -3131,7 +5636,17 @@ namespace
 			return ref && !ref->IsDeleted() ? ref : nullptr;
 		}
 
-		RE::hkpRigidBody* HkBody() const { return body_ ? body_->GetRigidBody() : nullptr; }
+		// v1.8.49: only while the body is the hull's own now (its 3D the one it was found in). After a coc / a door the hull's
+		// 3D is unloaded and its body freed before our next look; every boat asks "is the player aboard me" each frame before
+		// its own update re-checks, and the cast on the freed body crashed (crash log 17:19, coc to Dawnstar). The body is also
+		// held (body_ is a NiPointer now), so it is never freed under us.
+		RE::hkpRigidBody* HkBody() const
+		{
+			if (!body_ || needInit_ || !root_) return nullptr;
+			auto* r = Ref();
+			if (!r || r->Get3D() != root_) return nullptr;
+			return body_->GetRigidBody();
+		}
 
 		static bool WaterAt(const RE::NiPoint3& a_pos, float& a_h)
 		{
@@ -3177,7 +5692,7 @@ namespace
 				return false;
 			}
 			needInit_ = false;
-			body_ = rb;
+			body_ = RE::NiPointer<RE::bhkRigidBody>(rb);  // v1.8.49: held
 			haveLastTarget_ = false;
 			auto* hb = rb->GetRigidBody();
 			const int before = hb ? static_cast<int>(hb->motion.type.get()) : -1;
@@ -3237,7 +5752,7 @@ namespace
 				state = static_cast<int>(cc->context.currentState);
 				onUs = cc->supportBody.get() == HkBody();
 			}
-			return std::format("{} local {:.0f} {:.0f} {:.1f} (deck {:.0f}) state {} on hull {}", a_actor->GetName(), local.x, local.y, local.z, kDeckZ, state, onUs ? 1 : 0);
+			return std::format("{} local {:.0f} {:.0f} {:.1f} (deck {:.0f}) state {} on hull {}", a_actor->GetName(), local.x, local.y, local.z, Dims().deckZ, state, onUs ? 1 : 0);
 		}
 
 		void LogFrame(bool a_now, float a_dt = 0.0f)
@@ -3251,7 +5766,7 @@ namespace
 			zMin_ = (std::min)(zMin_, lz);
 			zMax_ = (std::max)(zMax_, lz);
 			logTimer_ += a_dt;
-			if (!a_now && logTimer_ < 0.5f) return;
+			if (!a_now && logTimer_ < 10.0f) return;  // v1.8.79: was every half second
 			logTimer_ = 0.0f;
 			RE::NiPoint3 bp;
 			Quat bq;
@@ -3314,7 +5829,7 @@ namespace
 			auto* to = a_ref->GetParentCell();
 			auto* rootAfter = a_ref->Get3D();
 			if (rootAfter != rootBefore) {  // v1.2.2: the old body went with the old 3D; never read it again
-				body_ = nullptr;
+				body_.reset();
 				needInit_ = true;
 				haveLastTarget_ = false;
 			}
@@ -3345,7 +5860,7 @@ namespace
 			a_ref->MoveTo(player);
 			a_ref->data.angle = RE::NiPoint3{ 0.0f, 0.0f, yaw_ };
 			a_ref->SetPosition(at);
-			body_ = nullptr;
+			body_.reset();
 			needInit_ = true;
 			haveLastTarget_ = false;
 			cellLost_ = false;
@@ -3468,8 +5983,36 @@ namespace
 			const char* edid = a_race ? a_race->formEditorID.c_str() : nullptr;
 			return edid && std::string_view(edid) == "HorseRace";
 		}
-		static RE::TESNPC* FindCarrierBase()
+		// v1.8.66: each boat's carrier is its own actor of its own race in OarsAndSails.esl (RowRimRowboatCarrier 0x808 /
+		// RowRimSailboatCarrier 0x809, races 0x806 / 0x807, copies of the mannequin's without its script): no vanilla
+		// mannequins placed in saves any more, and with the esl gone every carrier goes with it. The mannequin is only a
+		// fallback for an old esl.
+		static constexpr RE::FormID kOwnCarrierLocal[2] = { 0x808, 0x809 };
+		static constexpr RE::FormID kOwnRowHullLocal = 0x80A;
+		static RE::TESNPC* OwnCarrier(int a_kind)
 		{
+			auto* dh = RE::TESDataHandler::GetSingleton();
+			return dh ? dh->LookupForm<RE::TESNPC>(kOwnCarrierLocal[a_kind == kKindRow ? 0 : 1], "OarsAndSails.esl") : nullptr;
+		}
+		// any carrier base, ours or the mannequin an older version placed
+		static bool IsCarrierBase(const RE::TESNPC* a_npc)
+		{
+			if (!a_npc) return false;
+			if (a_npc == OwnCarrier(kKindRow) || a_npc == OwnCarrier(kKindSail)) return true;
+			const char* re = a_npc->race ? a_npc->race->formEditorID.c_str() : nullptr;
+			return re && std::string_view(re) == "ManakinRace";
+		}
+		static RE::TESNPC* FindCarrierBase(int a_kind = -1)
+		{
+			if (a_kind >= 0) {
+				static bool s_logged[kKindCount]{};
+				auto* own = OwnCarrier(a_kind);
+				if (!s_logged[std::clamp(a_kind, 0, kKindCount - 1)]) {
+					s_logged[std::clamp(a_kind, 0, kKindCount - 1)] = true;
+					logger::info("Carrier: {} base {:08X}{}", a_kind == kKindRow ? "rowboat" : "sailing boat", own ? own->GetFormID() : 0u, own ? " (our own, OarsAndSails.esl)" : " not in OarsAndSails.esl (old esl?): the mannequin instead");
+				}
+				if (own) return own;
+			}
 			auto* dh = RE::TESDataHandler::GetSingleton();
 			if (!dh) return nullptr;
 			static RE::TESNPC* s_person = nullptr;
@@ -3541,19 +6084,27 @@ namespace
 		void SpawnCarrier(const RE::NiPoint3& a_at)
 		{
 			auto* player = RE::PlayerCharacter::GetSingleton();
-			auto* base = FindCarrierBase();
+			auto* base = FindCarrierBase(kind_);
 			if (!player || !base) { Print("RowRim: no carrier base found; the hull draws itself"); return; }
-			auto ref = player->PlaceObjectAtMe(base, true);
+			// v1.8.66: placed at the hull, never at the player (placed at the player inside a house, the carrier stood by the
+			// door: Nexus, a mannequin by the cell's entrance), and only while the boat's own cell is loaded
+			auto* hull = Ref();
+			if (!hull || !HullCellLoaded()) {
+				if (carrierWaitLogs_++ < 5) logger::info("Carrier: not placed yet (the boat is not loaded); placed once it is");
+				return;
+			}
+			auto ref = hull->PlaceObjectAtMe(base, true);
 			auto* actor = ref ? ref->As<RE::Actor>() : nullptr;
 			if (!actor) { Print("RowRim: carrier spawn failed"); return; }
 			carrierId_ = actor->GetFormID();
-			CarrierAudio::id.store(carrierId_, std::memory_order_relaxed);
+			CarrierAudio::ids[kind_].store(carrierId_, std::memory_order_relaxed);
 			actor->SetCollision(false);  // no capsule in the boat, nothing to bump or pick
 			actor->EnableAI(carrierAI_);
 			ShieldCarrier(actor);
 			MuteCarrier(actor);
 			CalmCarrier(actor);  // v1.7.63
 			actor->SetPosition(CarrierSpot(a_at), true);
+			UnrideVisual("new carrier");  // v1.8.57
 			visual_.reset();
 			wbShown_ = nullptr;
 			hiddenKids_ = 0;
@@ -3561,8 +6112,74 @@ namespace
 				static_cast<int>(kCarrierDepth), carrierAI_ ? "on" : "off"));
 		}
 
+		// v1.8.66: a rowboat placed by an older version stands on the vanilla ShipRowBoat01: once its cell is loaded and you
+		// are not aboard, it is placed again on our own copy (OarsAndSails.esl 0x80A) where it was and the old ref deleted,
+		// so nothing vanilla of ours stays in the save. The new 3D sets itself up as after a cell hop.
+		bool rebased_{ false };
+		void RebaseHull()
+		{
+			auto* old = Ref();
+			if (!old) return;
+			auto* want = HullBase();
+			if (!want || old->GetBaseObject() == want) { rebased_ = true; return; }
+			if (!HullCellLoaded() || seated_ || PlayerAboard() || !old->Get3D()) return;
+			auto ref = old->PlaceObjectAtMe(want, persist_);
+			if (!ref) { rebased_ = true; logger::info("Hull: rebase failed (placing the new hull)"); return; }
+			const RE::NiPoint3 at = old->GetPosition();
+			const float yaw = old->data.angle.z;
+			ref->data.angle = RE::NiPoint3{ 0.0f, 0.0f, yaw };
+			ref->SetPosition(at);
+			if (kind_ != kKindRow) {
+				ref->extraList.SetExtraFlags(RE::ExtraFlags::Flag::kBlockActivate, true);
+				ref->extraList.SetExtraFlags(RE::ExtraFlags::Flag::kBlockPlayerActivate, true);
+				ref->extraList.SetExtraFlags(RE::ExtraFlags::Flag::kBlockActivateText, true);
+			}
+			if (persist_ && mobile_) MakeMobile(ref.get(), at, yaw);
+			const RE::FormID was = refId_;
+			refId_ = ref->GetFormID();
+			old->Disable();
+			old->SetDelete(true);
+			rebased_ = true;
+			logger::info("Hull: {} moved from the vanilla rowboat {:08X} onto our own hull {:08X}", Dims().label, was, refId_);
+		}
+		int carrierWaitLogs_{ 0 };
+		float carrierRetry_{ 0.0f };
 		static RE::NiPoint3 CarrierSpot(const RE::NiPoint3& a_at) { return { a_at.x, a_at.y, a_at.z - kCarrierDepth }; }
 
+		// v1.8.31e: a stray carrier (a mannequin standing bare in the water, Miguel's screenshot): one we placed (an FF
+		// actor of the carrier base) that is no boat's carrier now, from a boat put away, swapped or reloaded while its
+		// actor stayed (Forget() lets go of a boat whose hull is gone, its carrier left standing). Every 2 s, any such
+		// actor in the water of an exterior cell is removed. Placed mannequins (player homes, a plugin's own) are never FF
+		// refs; the lake boats have no carriers (their model rides on the hull ref); the three boats' own carriers are kept.
+		static inline float s_strayCarrierT = 0.0f;
+		static void SweepStrayCarriers(float a_dt)
+		{
+			if ((s_strayCarrierT += a_dt) < 2.0f) return;
+			s_strayCarrierT = 0.0f;
+			auto* pl = RE::ProcessLists::GetSingleton();
+			auto* player = RE::PlayerCharacter::GetSingleton();
+			if (!pl || !player) return;
+			std::vector<RE::Actor*> gone;
+			for (auto& hnd : pl->highActorHandles) {
+				auto a = hnd.get();
+				if (!a || a.get() == player || (a->GetFormID() >> 24) != 0xFF || a->IsDisabled() || !IsCarrierBase(a->GetActorBase())) continue;
+				bool ours = false;
+				for (int k = 0; k < kKindCount; ++k) if (Of(k).carrierId_ == a->GetFormID()) ours = true;
+				if (ours) continue;
+				auto* c = a->GetParentCell();
+				if (!c || !c->IsExteriorCell()) continue;
+				// and only in the water (a carrier rides under its hull): a mannequin another mod placed on land is left be
+				const RE::NiPoint3 at = a->GetPosition();
+				float w = 0.0f;
+				const bool wet = c->GetWaterHeight(at, w) && std::isfinite(w) && std::abs(w) < 1000000.0f && at.z < w;
+				if (!wet) continue;
+				gone.push_back(a.get());
+			}
+			for (auto* a : gone) {
+				logger::info("Carrier: stray carrier {:08X} (no boat's) removed", a->GetFormID());
+				LakeBoats::DeleteActorLater(a);
+			}
+		}
 		void DeleteCarrier()
 		{
 			if (visual_ && visual_->parent) {
@@ -3575,10 +6192,37 @@ namespace
 				LakeBoats::DeleteActorLater(a);  // v1.4.1: disabled now, deleted 2 s later (never in the same frame)
 			}
 			carrierId_ = 0;
-			CarrierAudio::id.store(0, std::memory_order_relaxed);
+			CarrierAudio::ids[kind_].store(0, std::memory_order_relaxed);
 		}
 
 		// The boat model: a clone of the hull's own nif, physics stripped (the hull ref keeps the collision).
+		// v1.8.48: every part found in a boat model is kept until the model changes, told by the model's address. A boat
+		// placed again (Dock here, a dock calling it) frees the old model and makes a new one, and the new one can get the
+		// old one's address: the parts were not looked up again and the tiller's freed node was turned (the crash at
+		// TendSailBoat, Dock here while swimming). Each new model forgets them all.
+		void ForgetVisualCaches()
+		{
+			locksOn_ = nullptr;
+			lsOn_ = nullptr;
+			sbOn_ = nullptr;
+			sbMainT0On_ = nullptr;
+			sbJawOn_ = nullptr;
+			sbRudderOn_ = nullptr;
+			sbRudder_ = nullptr;
+			sbTiller_ = nullptr;
+			sbFurlOn_ = nullptr;
+			anOn_ = nullptr;
+			anStowRope_ = nullptr;
+			sailOn_ = nullptr;
+			bagOn_ = nullptr;
+			rollCulledOn_ = nullptr;
+			paintedRoot_ = nullptr;
+			drawnRoot_ = nullptr;
+			tentOn_ = nullptr;
+			helmHandLive_ = false;
+			mkRoot_.reset();  // v1.8.51: the seat markers were on the old model (it owns them now)
+			mkOn_ = nullptr;
+		}
 		RE::NiPointer<RE::NiNode> MakeVisual()
 		{
 			RE::NiPointer<RE::NiNode> out;
@@ -3590,11 +6234,14 @@ namespace
 			RE::NiPointer<RE::NiNode> src;
 			const RE::BSModelDB::DBTraits::ArgsType args{};
 			// v0.4.0: our own hull nif first (vanilla hull + bilge floor + water blocker planes), the hull base's model if missing
-			RE::BSModelDB::Demand(kOwnHullModel, src, args);
-			if (!src) RE::BSModelDB::Demand((std::string("meshes\\") + kOwnHullModel).c_str(), src, args);
-			if (src) path = kOwnHullModel;
-			else {
-				logger::info("Carrier: {} not found, using the hull base's model", kOwnHullModel);
+			// v1.7.87: or the sailing boat (oas model sail, RowRim.ini [Boat] Model=sail; local test)
+			const std::string own = ModelPath();
+			RE::BSModelDB::Demand(own.c_str(), src, args);
+			if (!src) RE::BSModelDB::Demand((std::string("meshes\\") + own).c_str(), src, args);
+			if (src) path = ModelPath();
+			if (src) ApplyModelGeometry();  // v1.7.94 (v1.8.0: the rowboat's too; v1.8.8: each boat's own)
+			if (!src) {  // v1.7.98: was an else of the line above (the rowboat logged "not found" and loaded its nif twice)
+				logger::info("Carrier: {} not found, using the hull base's model", own);
 				RE::BSModelDB::Demand(path, src, args);
 			}
 			if (!src) RE::BSModelDB::Demand((std::string("meshes\\") + path).c_str(), src, args);
@@ -3604,10 +6251,13 @@ namespace
 			if (!clone) { logger::warn("Carrier: clone of '{}' failed", path); return out; }
 			StripPhysics(clone);
 			clone->local = RE::NiTransform{};
+			clone->local.scale = ModelScale();  // v1.8.27: the sailing boat a quarter bigger
 			out.reset(clone);
 			logger::info("Carrier: boat model '{}' cloned", path);
 			ApplyWaterBlock(clone);
-			AttachOars(clone);
+			if (Kind() == kKindRow) AttachOars(clone);  // v1.8.26: oars on the rowboat only
+			else for (auto& o : oars_) o.reset();
+			shownModel_ = ModelPath();
 			return out;
 		}
 
@@ -3619,6 +6269,123 @@ namespace
 		// One shape is shown at a time (rr "wb a|b|c|debug|off"); rr "wb floor" toggles the floor; rr "wb z N" moves the
 		// plane N units from its built height.
 		static constexpr const char* kOwnHullModel = "RowRim\\RowRim_Hull.nif";
+		// v1.7.87: the medieval sailing boat (bought model, local test only): its own nif, the helm on its stern bench
+		static constexpr const char* kSailBoatModel = "RowRim\\RowRim_SailBoat.nif";
+		// v1.8.8: the Viking longship (massive-graphisme, Sketchfab, CC BY 4.0), src\Longship_v1808_Model.md
+		static constexpr const char* kLongshipModel = "RowRim\\RowRim_Longship.nif";
+		static inline const RE::NiPoint3 kRowHelmSeat{ 0.0f, -215.0f, 35.0f };
+		// v1.7.94: the stern bench (top z 71), 15 further forward. v1.8.30i: 6.5 higher (was 41): the feet on the floorboards
+		// (top z 47, raised in v1.8.27c; they sank in) and the seat of the pants on the bench
+		static inline const RE::NiPoint3 kSailHelmSeat{ 16.0f, -200.0f, 47.5f };  // v1.8.40: 16 to starboard, his hand on the tiller (was 0)
+		static inline const RE::NiPoint3 kSailHelmSeatOld{ 0.0f, -200.0f, 47.5f };
+		static inline const RE::NiPoint3 kRowRowSeat{ 0.0f, 15.0f, 33.0f };
+		static inline const RE::NiPoint3 kSailRowSeat{ 0.0f, -68.0f, 38.0f };  // v1.7.94: the thwart's aft edge (top z 69), feet over the well
+		static inline const RE::NiPoint3 kRowOarLock{ 93.3f, 6.7f, 76.5f };
+		static inline const RE::NiPoint3 kSailOarLock{ 90.7f, -76.3f, 91.5f };  // v1.7.94: on the gunwale beside the rower (8.3 aft, as the rowboat's)
+		static inline const RE::NiPoint3 kSailAftLock{ 81.0f, -180.0f, 83.5f };  // where the shipped oars' blades rest, on the gunwale aft
+		// v1.8.8: the longship: the helm on the aftmost sea chest, starboard (top z 86), by the steering oar (x 131, y -905);
+		// no rower seat of your own (its crew row it: W / S at the helm); the oarlock pair at the oar ports amidships (y 32)
+		static inline const RE::NiPoint3 kLongHelmSeat{ 108.0f, -787.0f, 55.0f };
+		static inline const RE::NiPoint3 kLongRowSeat{ 0.0f, 32.0f, 50.0f };
+		static inline const RE::NiPoint3 kLongOarLock{ 216.0f, 32.0f, 85.0f };
+		static inline const RE::NiPoint3 kLongAftLock{ 200.0f, -110.0f, 85.0f };
+		// v1.7.94: each boat's seats and oarlocks, set whenever its model is put on (saves from before keep working)
+		void ApplyModelGeometry()
+		{
+			const int k = Kind();
+			if (k == kKindSail) { lampOn_ = false; seat_ = kSailHelmSeat * kSailScale; rowSeat_ = kSailRowSeat * kSailScale; lockLocal_ = kSailOarLock * kSailScale; aftLock_ = kSailAftLock * kSailScale; }  // v1.8.27: scaled
+			else if (k == kKindLong) { lampOn_ = false; seat_ = kLongHelmSeat; rowSeat_ = kLongRowSeat; lockLocal_ = kLongOarLock; aftLock_ = kLongAftLock; }
+			else {
+				lockLocal_ = kRowOarLock; aftLock_ = kAftLock;
+				// v1.8.0: seats left at another boat's (a save from a sailing boat session) go back to the rowboat's;
+				// a rowboat seat tuned by hand is kept
+				auto atSeat = [](const RE::NiPoint3& a, const RE::NiPoint3& b) { return (a - b).Length() < 0.5f; };  // (not "near": a Windows macro)
+				if (atSeat(seat_, kSailHelmSeat) || atSeat(seat_, kSailHelmSeatOld) || atSeat(seat_, kLongHelmSeat)) seat_ = kRowHelmSeat;
+				if (atSeat(rowSeat_, kSailRowSeat) || atSeat(rowSeat_, kLongRowSeat)) rowSeat_ = kRowRowSeat;
+			}
+		}
+		// v1.7.98: the sailing boat's sail test models: sail (the working one), sailskin (bones), sailcloth (moving cloth);
+		// v1.8.8: RowRim.ini [Boat] SailModel (was [Boat] Model)
+		static inline const char* kSailModels[3] = { "sail", "sailskin", "sailcloth" };
+		static inline const char* kSailModelPaths[3] = { kSailBoatModel, "RowRim\\RowRim_SailBoatSkin.nif", "RowRim\\RowRim_SailBoatCloth.nif" };
+		static int SailModelIndex()
+		{
+			char b[32]{};
+			const auto ini = Plankton::IniPath();
+			GetPrivateProfileStringA("Boat", "SailModel", "", b, sizeof(b), ini.c_str());
+			if (!b[0]) GetPrivateProfileStringA("Boat", "Model", "sailskin", b, sizeof(b), ini.c_str());
+			// v1.8.50: the old plain-sails model (RowRim_SailBoat.nif: blanket and sacks, no rudder or tiller) is never used:
+			// "oas boat sail" wrote SailModel=sail and put it out. Only the moving cloth test is kept, else the sails on bones.
+			// v1.8.53: the moving-cloth test is not packed either: always the sails on bones
+			(void)b;
+			return 1;  // v1.8.27: the sails on bones (RowRim_SailBoatSkin.nif) are the default
+		}
+		const char* ModelPath() const
+		{
+			switch (Kind()) {
+			case kKindSail: return kSailModelPaths[SailModelIndex()];
+			case kKindLong: return kLongshipModel;
+			default: return kOwnHullModel;
+			}
+		}
+		bool SailBoatModel() const { return Kind() != kKindRow; }  // a boat with its own rig (not the rowboat's lug sail)
+		// the hull ref's base: the rowboat ShipRowBoat01 (its vanilla collision), the others their own from OarsAndSails.esl
+		RE::TESBoundObject* HullBase() const
+		{
+			if (Kind() == kKindRow) {
+				// v1.8.66: our own copy of ShipRowBoat01 (OarsAndSails.esl 0x80A): no vanilla rowboats left in a save
+				if (auto* dh = RE::TESDataHandler::GetSingleton())
+					if (auto* own = dh->LookupForm<RE::TESObjectSTAT>(kOwnRowHullLocal, "OarsAndSails.esl")) return own;
+				RE::TESBoundObject* b = RE::TESForm::LookupByID<RE::TESObjectSTAT>(kRowBoatStatic);
+				if (!b) b = RE::TESForm::LookupByEditorID<RE::TESObjectSTAT>("ShipRowBoat01");
+				return b;
+			}
+			auto* dh = RE::TESDataHandler::GetSingleton();
+			return dh ? dh->LookupForm<RE::TESObjectACTI>(Kind() == kKindSail ? kSailHullLocal : kLongHullLocal, "OarsAndSails.esl") : nullptr;
+		}
+	public:
+		// v1.8.8: each boat is its own: its own hull and collision, model, seats and settings (RowRim.ini [Row] / [RowSail],
+		// [SailBoat] / [Sail], [Longship] / [LongshipSail]) and its own page in the settings. One boat is out at a time:
+		// oas boat row|sail|longship puts the one out away and places the other where it was (or ahead of you).
+		// oas model row|sail|sailskin|sailcloth|longship does the same (the sail test models are the sailing boat's).
+		void SetKind(const std::string& a_which)
+		{
+			const int k = KindFromName(a_which);
+			if (k < 0) { Print(std::format("RowRim: the boat is the {} (oas boat row|sail)", Dims().label)); return; }
+			if (k != kKindRow && !SailEnabled()) { logger::info("Boat: {} refused (sailing is off: RowRim.ini [Sail] Enabled=1)", a_which); Print("RowRim: only the rowboat while sailing is off (RowRim.ini [Sail] Enabled=1)"); return; }
+			const auto ini = Plankton::IniPath();
+			if (k == kKindSail) {
+				// v1.8.50: only the sail test names choose the model ("sail" is the boat, not the old plain-sails model)
+				for (int i = 1; i < 3; ++i)
+					if (_stricmp(a_which.c_str(), kSailModels[i]) == 0) WritePrivateProfileStringA("Boat", "SailModel", kSailModels[i], ini.c_str());
+			}
+			WritePrivateProfileStringA("Boat", "Kind", DimsOf(k).name, ini.c_str());
+			// v1.8.26: that boat is the one you use now; the others stay where they are (oas boat brings it out if it is not)
+			if (&Of(k) != this) {
+				SwitchActive(k, "oas boat");
+				Of(k).SetKind(a_which);
+				return;
+			}
+			ApplyModelGeometry();
+			if (lampOn_ && k != kKindRow) SetLamp(false);
+			LoadRowSettings();  // v1.7.98: each boat's own settings
+			sailSpeed_ = -1.0f;
+			LoadSailTuning();
+			if (visual_ && shownModel_ != ModelPath()) {  // another model of this boat (the sail tests): rebuilt next frame
+				if (visual_->parent) {
+					RE::NiPointer<RE::NiAVObject> tmp;
+					visual_->parent->DetachChild(visual_.get(), tmp);
+				}
+				visual_.reset();
+				wbShown_ = nullptr;
+			}
+			const bool out = HaveBoat();
+			logger::info("Boat: {} ({}), helm seat {:.0f} {:.0f} {:.0f}, rower seat {:.0f} {:.0f} {:.0f}", Dims().label, ModelPath(), seat_.x, seat_.y, seat_.z, rowSeat_.x, rowSeat_.y, rowSeat_.z);
+			Print(std::format("RowRim: {}{}", Dims().label, out ? "" : " (oas boat to bring it)"));
+		}
+		const char* shownModel_{ nullptr };  // v1.8.26: the model the boat was built with
+		void SetModel(const std::string& a_which) { SetKind(a_which); }
+	private:
 		static RE::NiAVObject* FindShape(RE::NiAVObject* a_obj, std::string_view a_name, int a_depth = 0)
 		{
 			if (!a_obj || a_depth > 6) return nullptr;
@@ -3704,12 +6471,21 @@ namespace
 		void TendCarrier(const RE::NiPoint3& a_at, const RE::NiMatrix3& a_rot, float a_dt)
 		{
 			auto* a = carrierId_ ? RE::TESForm::LookupByID<RE::Actor>(carrierId_) : nullptr;
-			if (!a || a->IsDeleted()) return;
+			if (!a || a->IsDeleted()) {
+				// v1.8.66: no carrier (swapped while the boat was not loaded, or an old save's mannequin removed): placed now
+				if (carrierOn_ && HullCellLoaded() && (carrierRetry_ -= a_dt) <= 0.0f) {
+					carrierRetry_ = 2.0f;
+					carrierId_ = 0;
+					SpawnCarrier(a_at);
+				}
+				return;
+			}
 			// v1.7.63: a save's horse carrier (or one that died) is swapped for a person: removed, a new one placed
 			// v1.7.71: also any carrier not of today's base (a townsperson from a test build before the mannequin), once a load
-			auto* want = FindCarrierBase();
+			auto* want = FindCarrierBase(kind_);
 			auto* has = a->GetActorBase();
-			const bool other = want && has && has != want && !carrierSwapped_;
+			// v1.8.66: an old version's mannequin is swapped for this boat's own carrier, only with the boat loaded
+			const bool other = want && has && has != want && !carrierSwapped_ && HullCellLoaded();
 			if (!carrierChecked_) {
 				carrierChecked_ = true;
 				logger::info("Carrier: {:08X} is '{}' ({:08X}), wanted '{}' ({:08X})", carrierId_, has ? has->GetName() : "?", has ? has->GetFormID() : 0u,
@@ -3724,7 +6500,38 @@ namespace
 				aiApplied_ = false;
 				return;
 			}
-			CarrierAudio::id.store(carrierId_, std::memory_order_relaxed);
+			// v1.7.80: after sleeping or waiting the game left the carrier in a cell it had unloaded, with no 3D: the boat model
+			// rides on it, so the bare hull showed (no clutter, oars, sail). Lost (no 3D, or its cell detached) for half a
+			// second: moved to the hull (MoveTo refiles it and loads its 3D), again each second; still lost after 4 s: a new
+			// carrier is placed.
+			{
+				auto* pc = a->GetParentCell();
+				// v1.8.57b: only while the boat itself is in a loaded cell (a docked boat far away is not "lost": its carrier was
+				// moved and replaced every few seconds, the boat model rebuilt each time)
+				const bool lost = HullCellLoaded() && (!a->Get3D() || !pc || !pc->IsAttached());
+				const float before = carrierLost_;
+				carrierLost_ = lost ? carrierLost_ + a_dt : 0.0f;
+				if (lost && carrierLost_ > 0.5f && std::floor(carrierLost_ - 0.5f) != std::floor(before - 0.5f)) {
+					if (auto* hull = Ref()) {
+						a->MoveTo(hull);
+						logger::info("Carrier: {:08X} lost ({}, cell {:08X}{}) after {:.1f} s: moved to the hull", carrierId_, a->Get3D() ? "3D in" : "no 3D",
+							pc ? pc->GetFormID() : 0u, pc && pc->IsAttached() ? "" : " detached", carrierLost_);
+					}
+				}
+				if (carrierLost_ > 4.0f) {
+					logger::info("Carrier: {:08X} still lost after 4 s: a new one placed", carrierId_);
+					carrierLost_ = 0.0f;
+					// v1.8.57: the model riding on the player stays where it is (no rebuild, no blink)
+					RE::NiPointer<RE::NiNode> keep = VisualOnPlayer() ? visual_ : RE::NiPointer<RE::NiNode>();
+					if (keep) visual_.reset();
+					DeleteCarrier();
+					SpawnCarrier(a_at);
+					if (keep) visual_ = keep;
+					aiApplied_ = false;
+					return;
+				}
+			}
+			CarrierAudio::ids[kind_].store(carrierId_, std::memory_order_relaxed);
 			MuteCarrier(a);  // also covers restored saves and process/3D reloads
 			if (!aiApplied_) { a->EnableAI(carrierAI_); a->SetCollision(false); ShieldCarrier(a); CalmCarrier(a); aiApplied_ = true; }
 			a->SetPosition(CarrierSpot(a_at), true);
@@ -3732,18 +6539,29 @@ namespace
 			// the spawn spot (bound radius grew with the distance rowed) and the game faded the actor out by that spot's
 			// distance, boat and all. Its 3D is now put where the actor is every frame.
 			a->Update3DPosition(true);
+			if (TendRide(a, a_at, a_rot, a_dt)) return;  // v1.8.57: third person aboard, the model rides on the player
 			auto* aroot = a->Get3D();
 			if (!aroot) return;
 			if (auto* fade = aroot->AsFadeNode()) fade->GetRuntimeData().currentFade = 1.0f;  // not loaded yet: the hidden-collision rule keeps the hull ref drawn meanwhile
 			auto* anode = aroot->AsNode();
 			if (!anode) return;
-			if (!visual_) visual_ = MakeVisual();
-			if (!visual_) return;
+			if (!visual_) {
+				visual_ = MakeVisual();
+				ForgetVisualCaches();  // v1.8.48: the new model may sit where the old one was freed (the same address)
+			}
+			if (!visual_) {
+				// v1.8.31e: no boat model to ride on it yet (its hull not loaded): the mannequin is still kept hidden (it stood
+				// bare in the water)
+				for (auto& child : anode->GetChildren())
+					if (child && !child->flags.any(RE::NiAVObject::Flag::kHidden)) child->flags.set(RE::NiAVObject::Flag::kHidden);
+				return;
+			}
 			if (visual_->parent != anode) {  // first time, or the carrier's 3D was reloaded
 				if (visual_->parent) {
 					RE::NiPointer<RE::NiAVObject> tmp;
 					visual_->parent->DetachChild(visual_.get(), tmp);
 				}
+				visual_->local.scale = ModelScale();  // v1.8.57: as built (it may come back from the player)
 				anode->AttachChild(visual_.get(), true);
 				hiddenKids_ = 0;
 				logger::info("Carrier: boat model attached to the carrier's 3D");
@@ -3763,19 +6581,198 @@ namespace
 				if (!a->IsActivationBlocked()) ShieldCarrier(a);  // v1.4.3: older saves' carriers too
 				hiddenKids_ = 1;
 			}
+			DressVisual(anode, true, a_at, a_rot, a_dt);
+		}
+		// v1.8.56 / v1.8.57: the model kept drawn, painted and placed, on the carrier or on the player
+		void DressVisual(RE::NiNode* a_parent, bool a_flagParent, const RE::NiPoint3& a_at, const RE::NiMatrix3& a_rot, float a_dt)
+		{
 			KeepOpaque(visual_.get());
+			// v1.8.56: the boat is never culled. The sailing boat (a skinned model, its sails rebuilt every frame) flickered or
+			// vanished for a frame when turning on heavier lists (occlusion, eFPS): the renderer tested a bound one frame stale.
+			// Always drawn: the carrier's root and every node and shape of the boat, once per model
+			if (a_flagParent && !a_parent->flags.any(RE::NiAVObject::Flag::kAlwaysDraw)) a_parent->flags.set(RE::NiAVObject::Flag::kAlwaysDraw);
+			if (drawnRoot_ != visual_.get()) {
+				AlwaysDraw(visual_.get());
+				drawnRoot_ = visual_.get();
+			}
 			if (paintedRoot_ != visual_.get() || paintedAs_ != paint_) {  // v1.1.0: the OAS paint (rr paint ...), once per model / paint
 				Paint::Apply(visual_.get(), paint_);
 				paintedRoot_ = visual_.get();
 				paintedAs_ = paint_;
 			}
 			PlaceNode(visual_.get(), a_at, a_rot);
+			drawAt_ = a_at;  // v1.8.57: kept for re-placing it on the player after the body tilt
+			drawRot_ = a_rot;
+			haveDraw_ = true;
 			TendLamp(a_dt);
 			TendTent(a_dt);  // v1.7.34
-			Crew::g.dogStern = Gear::BedrollShown();  // v1.7.36: the dog sits at the stern while the bed is out
+			if (IsActive()) Crew::g.dogStern = kind_ == kKindRow && Gear::BedrollShown();  // v1.7.36: the dog sits at the stern while the bed is out
 			// the carrier's bound must take in the boat, or the renderer culls them both by the horse alone (a frozen actor
 			// does not rebuild it): rebuilt from the boat up to the scene root every frame
-			for (RE::NiAVObject* n = anode; n; n = n->parent) n->UpdateWorldBound();
+			for (RE::NiAVObject* n = a_parent; n; n = n->parent) n->UpdateWorldBound();
+		}
+
+		// ---- v1.8.57d: one-frame jumps of the seated body ----
+		// Miguel's frames (Elysium / NEFARAM, seated at the helm, moving the camera): for one frame he and the boat riding on
+		// him were turned and moved on the water, the camera and the sea steady. Not in vanilla: a mod sets his 3D for a frame.
+		// Right before the draw, his root is checked against the boat as drawn: a jump of more than 12 units or 0.12 rad
+		// since last frame is put back where he was on the boat (up to 3 frames running; a real change is taken after that).
+		bool spikeHave_{ false };
+		int spikeOdd_{ 0 }, spikeLogs_{ 0 };
+		RE::NiPoint3 spikePos_{};
+		RE::NiMatrix3 spikeRot_{};
+	public:
+		void RootSpikeGuard()
+		{
+			auto* player = RE::PlayerCharacter::GetSingleton();
+			auto* root = player ? player->Get3D(false) : nullptr;
+			if (!seated_ || !root || !root->parent || !havePose_ || gliding_) { spikeHave_ = false; return; }  // v1.8.71: the glide moves it on purpose
+			RE::NiPoint3 bp;
+			RE::NiMatrix3 R;
+			DrawPose(bp, R);
+			const RE::NiMatrix3 Rt = R.Transpose();
+			const RE::NiPoint3 lp = Rt * (root->world.translate - bp);
+			const RE::NiMatrix3 lr = Rt * root->world.rotate;
+			if (spikeHave_) {
+				const float dp = (lp - spikePos_).Length();
+				const RE::NiPoint3 f0 = spikeRot_ * RE::NiPoint3{ 0.0f, 1.0f, 0.0f }, f1 = lr * RE::NiPoint3{ 0.0f, 1.0f, 0.0f };
+				const float ang = std::acos(std::clamp(f0.x * f1.x + f0.y * f1.y + f0.z * f1.z, -1.0f, 1.0f));
+				if ((dp > 12.0f || ang > 0.12f) && spikeOdd_ < 3) {
+					++spikeOdd_;
+					const RE::NiPoint3 wp = bp + R * spikePos_;
+					const RE::NiMatrix3 wr = R * spikeRot_;
+					auto* par = root->parent;
+					const RE::NiMatrix3 pinv = par->world.rotate.Transpose();
+					const float sc = par->world.scale > 0.0f ? par->world.scale : 1.0f;
+					root->local.rotate = pinv * wr;
+					root->local.translate = (pinv * (wp - par->world.translate)) / sc;
+					RE::NiUpdateData data{};
+					root->Update(data);
+					ReplaceRiding();
+					if (spikeLogs_++ < 40) logger::info("Seat: body jumped {:.1f} units / {:.2f} rad in a frame (frame {} of it), put back on the seat", dp, ang, spikeOdd_);
+					return;
+				}
+				if (spikeOdd_ >= 3) logger::info("Seat: body moved {:.1f} units / {:.2f} rad and stayed: taken as real", dp, ang);
+			}
+			spikePos_ = lp;
+			spikeRot_ = lr;
+			spikeHave_ = true;
+			spikeOdd_ = 0;
+		}
+	private:
+		// ---- v1.8.57: the boat model rides on the player ----
+		// On Elysium the hidden carrier was lost (no 3D, a detached cell) hundreds of times a session, and the boat drawn on
+		// it blinked out or lagged. In third person aboard the boat in use, the model is now a child of the player's own 3D,
+		// placed where the boat is every frame: it moves with you, whatever the carrier does. The carrier stays (sound, docked
+		// boats), every part of it hidden. First person (the third person body is not drawn) and off the boat: on the carrier,
+		// as before. Kept 0.75 s after you are last aboard (a jump on deck), dropped at once if the boat is 2000 away.
+		bool HullCellLoaded() const
+		{
+			auto* r = Ref();
+			auto* c = r ? r->GetParentCell() : nullptr;
+			return c && c->IsAttached();
+		}
+		float rideHold_{ 0.0f };
+		RE::NiPoint3 drawAt_{};
+		RE::NiMatrix3 drawRot_{};
+		bool haveDraw_{ false };
+		// the body tilt turns the player's root, and the boat riding on it with it: put back where the boat is
+		void ReplaceRiding()
+		{
+			if (haveDraw_ && VisualOnPlayer()) PlaceNode(visual_.get(), drawAt_, drawRot_);
+		}
+		float rideHideTimer_{ 0.0f };
+		float standIn_{ 0.0f };  // v1.8.64
+		int standInLogs_{ 0 };
+		static RE::NiNode* PlayerRideNode()
+		{
+			auto* p = RE::PlayerCharacter::GetSingleton();
+			auto* o = p ? p->Get3D(false) : nullptr;
+			return o ? o->AsNode() : nullptr;
+		}
+		bool VisualOnPlayer() const
+		{
+			if (!visual_ || !visual_->parent) return false;
+			auto* pn = PlayerRideNode();
+			return pn && visual_->parent == pn;
+		}
+		void UnrideVisual(const char* a_why)
+		{
+			rideHold_ = 0.0f;
+			if (!VisualOnPlayer()) return;
+			RE::NiPointer<RE::NiAVObject> tmp;
+			visual_->parent->DetachChild(visual_.get(), tmp);
+			visual_->local.scale = ModelScale();
+			logger::info("Carrier: boat model off the player ({})", a_why);
+		}
+		// the boat in use only; any other boat (or one far away) never rides on you
+		void GuardRide(bool a_inUse)
+		{
+			if (!VisualOnPlayer()) return;
+			if (!a_inUse) { UnrideVisual("not the boat in use"); return; }
+			auto* p = RE::PlayerCharacter::GetSingleton();
+			if (!p || !havePose_ || !carrierOn_) { UnrideVisual("no boat pose"); return; }
+			const auto pp = p->GetPosition();
+			if (std::hypot(pp.x - pos_.x, pp.y - pos_.y) > 2000.0f) UnrideVisual("the boat is far away");
+		}
+		bool TendRide(RE::Actor* a_carrier, const RE::NiPoint3& a_at, const RE::NiMatrix3& a_rot, float a_dt)
+		{
+			auto* p = RE::PlayerCharacter::GetSingleton();
+			auto* cam = RE::PlayerCamera::GetSingleton();
+			const bool third = cam && !cam->IsInFirstPerson();
+			const bool inReach = p && std::hypot(p->GetPosition().x - a_at.x, p->GetPosition().y - a_at.y) < 2000.0f;
+			if (IsActive() && inReach && (seated_ || PlayerAboard())) rideHold_ = 0.75f;
+			else rideHold_ = (std::max)(0.0f, rideHold_ - a_dt);
+			// v1.8.64: mode 1 (default): the model stays on the carrier and only stand in on you while the carrier is not in the
+			// scene (no 3D, its 3D off the scene, its cell detached: the blink), back on the carrier the moment it is
+			const int mode = HelmCamSet::Get().rideMode;
+			bool use = mode == 2;
+			if (mode == 1) {
+				auto* r3 = a_carrier ? a_carrier->Get3D() : nullptr;
+				auto* pc = a_carrier ? a_carrier->GetParentCell() : nullptr;
+				const bool showing = r3 && r3->parent && pc && pc->IsAttached();
+				if (!showing) {
+					if (standIn_ <= 0.0f && standInLogs_ < 40) { ++standInLogs_; logger::info("Carrier: blinked out ({}), the boat model stands in on you", !r3 ? "no 3D" : !r3->parent ? "3D off the scene" : "cell detached"); }
+					standIn_ = 0.15f;
+				} else {
+					standIn_ = (std::max)(0.0f, standIn_ - a_dt);
+				}
+				use = standIn_ > 0.0f;
+			}
+			RE::NiNode* pn = rideHold_ > 0.0f && third && inReach && use ? PlayerRideNode() : nullptr;
+			if (!pn) {
+				if (VisualOnPlayer()) UnrideVisual(mode == 0 ? "switched off" : mode == 1 && third && rideHold_ > 0.0f ? "the carrier is back" : !third ? "first person" : "off the boat");
+				return false;
+			}
+			if (!visual_) {
+				visual_ = MakeVisual();
+				ForgetVisualCaches();
+				if (!visual_) return false;
+			}
+			if (visual_->parent != pn) {
+				if (visual_->parent) {
+					RE::NiPointer<RE::NiAVObject> tmp;
+					visual_->parent->DetachChild(visual_.get(), tmp);
+				}
+				pn->AttachChild(visual_.get(), true);
+				hiddenKids_ = 0;
+				logger::info("Carrier: boat model rides on the player (third person aboard)");
+			}
+			// the player's own scale taken out: the boat stays its built size
+			const float ps = pn->world.scale > 0.0f ? pn->world.scale : 1.0f;
+			visual_->local.scale = ModelScale() / ps;
+			// the carrier: all of it hidden (twice a second: equipment can add parts)
+			rideHideTimer_ += a_dt;
+			if (a_carrier && (hiddenKids_ == 0 || rideHideTimer_ > 0.5f)) {
+				rideHideTimer_ = 0.0f;
+				if (auto* ar = a_carrier->Get3D(); ar && ar->AsNode()) {
+					for (auto& child : ar->AsNode()->GetChildren())
+						if (child && !child->flags.any(RE::NiAVObject::Flag::kHidden)) child->flags.set(RE::NiAVObject::Flag::kHidden);
+					hiddenKids_ = 1;
+				}
+			}
+			DressVisual(pn, false, a_at, a_rot, a_dt);
+			return true;
 		}
 
 		// ---- v1.7.34: the tent over the bed fades in (and out) over 1.5 s with the bed; a lit lantern on the floor by the bed ----
@@ -3821,8 +6818,8 @@ namespace
 					bedLamp_->parent->DetachChild(bedLamp_.get(), tmp);
 				}
 			}
-			static constexpr bool kTentOn = false;  // v1.7.40: the tent is off for this release (the lantern stays with the bed)
-			const bool bedOut = Gear::BedrollShown();
+			static constexpr bool kTentOn = true;  // v1.8.24: the tent is back (v1.7.40 had it off for that release)
+			const bool bedOut = kind_ == kKindRow && Gear::BedrollShown();  // v1.8.26: the rowboat's bed
 			const bool want = bedOut && kTentOn;
 			const float before = tentA_;
 			tentA_ = std::clamp(tentA_ + (want ? 1.0f : -1.0f) * a_dt / 1.5f, 0.0f, 1.0f);
@@ -3845,7 +6842,7 @@ namespace
 				bedLamp_->name = "RowRim Bed Lantern";
 			}
 			float bottom = 0.0f, mid = 0.0f;
-			if (auto* base = RE::TESForm::LookupByID<RE::TESBoundObject>(LakeBoats::kLampStatic)) {
+			if (auto* base = LakeBoats::LampBase()) {
 				bottom = static_cast<float>(base->boundData.boundMin.z);
 				mid = 0.5f * (static_cast<float>(base->boundData.boundMax.z) + bottom);
 			}
@@ -3869,7 +6866,7 @@ namespace
 			auto light = bedLight_.get();
 			if (!light) {
 				if (auto* hull = Ref()) {
-					LakeBoats::PlaceAt(hull, RE::TESForm::LookupByID<RE::TESBoundObject>(LakeBoats::kLampLight), "bed light", bedLight_);
+					LakeBoats::PlaceAt(hull, LakeBoats::LightBase(), "bed light", bedLight_);
 					light = bedLight_.get();
 				}
 			}
@@ -3909,7 +6906,7 @@ namespace
 
 		static RE::NiNode* MakeLampClone(bool a_flame = false)
 		{
-			auto* base = RE::TESForm::LookupByID<RE::TESBoundObject>(LakeBoats::kLampStatic);
+			auto* base = LakeBoats::LampBase();
 			auto* model = base ? base->As<RE::TESModel>() : nullptr;
 			const char* path = model ? model->GetModel() : nullptr;
 			if (!path || !*path) { logger::warn("Lamp: the lantern has no model path"); return nullptr; }
@@ -3987,7 +6984,7 @@ namespace
 			const float hd = std::atan2(fwdW.x, fwdW.y);
 			const RE::NiMatrix3 lrot = RzM(hd) * RxM(st.pitch) * RyM(-st.roll);
 			float top = 0.0f, mid = 0.0f;
-			if (auto* base = RE::TESForm::LookupByID<RE::TESBoundObject>(LakeBoats::kLampStatic)) {
+			if (auto* base = LakeBoats::LampBase()) {
 				top = static_cast<float>(base->boundData.boundMax.z);
 				mid = 0.5f * (static_cast<float>(base->boundData.boundMax.z) + static_cast<float>(base->boundData.boundMin.z));
 			}
@@ -4008,7 +7005,7 @@ namespace
 			auto light = lampLight_.get();
 			if (night && !light) {
 				if (auto* hull = Ref()) {
-					LakeBoats::PlaceAt(hull, RE::TESForm::LookupByID<RE::TESBoundObject>(LakeBoats::kLampLight), "player light", lampLight_);
+					LakeBoats::PlaceAt(hull, LakeBoats::LightBase(), "player light", lampLight_);
 					light = lampLight_.get();
 				}
 			} else if (!night && light) {
@@ -4027,6 +7024,14 @@ namespace
 			}
 		}
 
+		static void AlwaysDraw(RE::NiAVObject* a_obj, int a_depth = 0)
+		{
+			if (!a_obj || a_depth > 16) return;
+			a_obj->flags.set(RE::NiAVObject::Flag::kAlwaysDraw);
+			if (auto* node = a_obj->AsNode()) {
+				for (auto& child : node->GetChildren()) AlwaysDraw(child.get(), a_depth + 1);
+			}
+		}
 		static void KeepOpaque(RE::NiAVObject* a_obj, int a_depth = 0)
 		{
 			if (!a_obj || a_depth > 4) return;
@@ -4039,6 +7044,188 @@ namespace
 		// v0.3.5: after standing up the boat model buzzed until the player moved at all (the physics was still: err 0). So
 		// the player is moved a tad, as a key tap would: a small forward drift on the character controller for 0.1 s,
 		// starting 2 frames after the stand-up (about 1 unit in all). `rr "nudge off"` to compare.
+		// ---- v1.8.9c: standing and jumping aboard a moving boat ----
+		// Walking and running are the engine's alone (it carries you on the hull's collision).
+		// Standing still: your spot on the deck is held. Once you have stood still 0.15 s your spot (boat space) is kept; if
+		// you are found off it (the bump back when the hull's collision reloads on a cell hop, or any other slip), you are
+		// put back on it, as the boat is now. Nothing is added while you are on your spot (the engine carries you).
+		// Jumping (Jump key, standing aboard): ride: the boat's velocity at your spot is part of your own every frame
+		// in the air (the last frame's share taken out first: it never piles up), or momentum: added once as you leave
+		// the deck. Your own jump (up and down) is the engine's. v1.8.9's position moves in the air held you down.
+		// RowRim.ini [Boat] Carry 0 off / 1 hold your spot standing still; [Boat] CarryJump 0 off / 1 ride / 2 momentum.
+		// oas carry on|off, oas carry jump off|ride|momentum.
+		int carryMode_{ -1 }, jumpMode_{ 1 };
+		float carryLogT_{ 0.0f };
+		int carryN_[3]{};  // spot restored, jump frames, momentum given
+		bool holdHave_{ false };
+		RE::NiPoint3 holdLocal_{};
+		float stillT_{ 0.0f };
+		bool jumping_{ false };
+		float jumpT_{ 0.0f }, jumpLastZ_{ 0.0f };
+		int jumpStill_{ 0 };
+		RE::NiPoint3 jumpAdded_{};  // ride: the boat's velocity added last frame (havok units)
+		bool jumpGiven_{ false };
+		void LoadCarry()
+		{
+			if (carryMode_ >= 0) return;
+			const auto ini = Plankton::IniPath();
+			carryMode_ = std::clamp(static_cast<int>(GetPrivateProfileIntA("Boat", "Carry", 1, ini.c_str())), 0, 1);
+			jumpMode_ = std::clamp(static_cast<int>(GetPrivateProfileIntA("Boat", "CarryJump", 1, ini.c_str())), 0, 2);
+			logger::info("Carry: standing still {}, jumps {} (RowRim.ini [Boat] Carry / CarryJump)", carryMode_ ? "held" : "the engine's", kJumpNames[jumpMode_]);
+		}
+	public:
+		static inline const char* kJumpNames[3] = { "off", "ride", "momentum" };
+		int CarryMode() { LoadCarry(); return carryMode_; }
+		int JumpMode() { LoadCarry(); return jumpMode_; }
+		void SetCarry(const std::string& a_what, const std::string& a_arg)
+		{
+			LoadCarry();
+			const auto ini = Plankton::IniPath();
+			if (a_what == "jump") {
+				int m = -1;
+				for (int i = 0; i < 3; ++i) if (a_arg == kJumpNames[i]) m = i;
+				if (a_arg == "on") m = 1;
+				if (m < 0) { Print(std::format("RowRim: jumps {} (oas carry jump off|ride|momentum)", kJumpNames[jumpMode_])); return; }
+				jumpMode_ = m;
+				WritePrivateProfileStringA("Boat", "CarryJump", std::to_string(m).c_str(), ini.c_str());
+			} else if (a_what == "on" || a_what == "off" || a_what == "position" || a_what == "velocity") {
+				carryMode_ = a_what == "off" ? 0 : 1;
+				WritePrivateProfileStringA("Boat", "Carry", carryMode_ ? "1" : "0", ini.c_str());
+			} else { Print(std::format("RowRim: standing still {}, jumps {} (oas carry on|off, oas carry jump off|ride|momentum)", carryMode_ ? "held" : "off", kJumpNames[jumpMode_])); return; }
+			holdHave_ = false;
+			Print(std::format("RowRim: standing still on a moving boat: {}, jumps: {}", carryMode_ ? "held on your spot" : "the game's", kJumpNames[jumpMode_]));
+		}
+		void OnJumpKey()
+		{
+			if (seated_ || !HaveBoat() || !havePose_ || !PlayerAboard()) return;
+			auto* player = RE::PlayerCharacter::GetSingleton();
+			if (!player) return;
+			jumping_ = true;
+			jumpT_ = 0.0f;
+			jumpStill_ = 0;
+			jumpLastZ_ = player->GetPosition().z;
+			jumpAdded_ = {};
+			jumpGiven_ = false;
+			holdHave_ = false;
+		}
+	private:
+		bool PlayerMoving(RE::PlayerCharacter* a_p) const
+		{
+			if (inFwd_ || inBack_ || inLeft_ || inRight_ || std::hypot(stickX_, stickY_) > 0.2f) return true;
+			auto* st = a_p->AsActorState();
+			return st && (st->actorState1.movingForward || st->actorState1.movingBack || st->actorState1.movingLeft || st->actorState1.movingRight);
+		}
+		void TendCarry(const RE::NiPoint3& a_at, const RE::NiMatrix3& a_rot, float a_dt)
+		{
+			LoadCarry();
+			auto* player = RE::PlayerCharacter::GetSingleton();
+			auto* cc = player ? player->GetCharController() : nullptr;
+			if (!player || !cc || seated_ || !havePose_ || a_dt <= 0.0f) { holdHave_ = false; jumping_ = false; return; }
+			auto* st = player->AsActorState();
+			const bool aboard = PlayerAboard() && !(st && st->IsSwimming());
+			if (!aboard) { holdHave_ = false; jumping_ = false; return; }
+			const RE::NiPoint3 p = player->GetPosition();
+			const float hs = RE::bhkWorld::GetWorldScale();
+			// ---- a jump ----
+			if (jumping_) {
+				jumpT_ += a_dt;
+				jumpStill_ = std::abs(p.z - jumpLastZ_) < 0.4f ? jumpStill_ + 1 : 0;
+				jumpLastZ_ = p.z;
+				const bool landed = jumpT_ > 1.5f || (jumpT_ > 0.3f && jumpStill_ >= 3);
+				RE::hkVector4 v;
+				cc->GetLinearVelocityImpl(v);
+				float f[4]{};
+				_mm_storeu_ps(f, v.quad);
+				// the boat's velocity at your spot this frame (its move and turn), level
+				const RE::NiPoint3 local = lastRot_.Transpose() * (p - lastAt_);
+				RE::NiPoint3 bv = (a_at + a_rot * local - p) / a_dt;
+				bv.z = 0.0f;
+				if (bv.Length() > 2000.0f) bv = {};
+				if (landed) {
+					if (jumpMode_ == 1) cc->SetLinearVelocityImpl(RE::hkVector4(f[0] - jumpAdded_.x, f[1] - jumpAdded_.y, f[2], 0.0f));  // the deck has you again
+					jumping_ = false;
+					jumpAdded_ = {};
+				} else if (jumpMode_ == 1) {
+					const RE::NiPoint3 add{ bv.x * hs, bv.y * hs, 0.0f };
+					cc->SetLinearVelocityImpl(RE::hkVector4(f[0] - jumpAdded_.x + add.x, f[1] - jumpAdded_.y + add.y, f[2], 0.0f));
+					jumpAdded_ = add;
+					++carryN_[1];
+				} else if (jumpMode_ == 2 && !jumpGiven_ && jumpT_ > 0.05f && p.z > jumpLastZ_ - 0.01f) {
+					cc->SetLinearVelocityImpl(RE::hkVector4(f[0] + bv.x * hs, f[1] + bv.y * hs, f[2], 0.0f));
+					jumpGiven_ = true;
+					++carryN_[2];
+				}
+				holdHave_ = false;
+				stillT_ = 0.0f;
+			}
+			// ---- standing still: your spot held ----
+			// v1.8.9d: the log had the spot restored every frame (the engine does not carry a player standing still on the
+			// keyframed hull reliably): a position snap every frame was the shaking. Now your controller is given the boat's
+			// own velocity at your spot plus a gentle pull back onto the spot (8/s), as the boat itself is driven: smooth,
+			// and it settles whether the engine carries you or not. A snap only if you are far off (over 60).
+			else if (carryMode_ == 1 && !PlayerMoving(player)) {
+				const RE::NiPoint3 here = lastRot_.Transpose() * (p - lastAt_);  // your spot on the boat as it is now
+				stillT_ += a_dt;
+				if (!holdHave_) {
+					if (stillT_ >= 0.15f) { holdHave_ = true; holdLocal_ = here; }
+				} else {
+					RE::NiPoint3 spot = lastAt_ + lastRot_ * RE::NiPoint3{ holdLocal_.x, holdLocal_.y, here.z };
+					RE::NiPoint3 e = spot - p;
+					e.z = 0.0f;
+					if (e.Length() > 60.0f) {
+						holdHave_ = false;  // pushed far (a door, an NPC, a fall): a new spot once still again
+						stillT_ = 0.0f;
+					} else {
+						RE::NiPoint3 bv = (a_at + a_rot * here - (lastAt_ + lastRot_ * here)) / a_dt;  // the boat's move at your spot
+						bv.z = 0.0f;
+						if (bv.Length() > 2000.0f) bv = {};
+						const RE::NiPoint3 want = bv + e * 8.0f;
+						RE::hkVector4 v;
+						cc->GetLinearVelocityImpl(v);
+						float f[4]{};
+						_mm_storeu_ps(f, v.quad);
+						cc->SetLinearVelocityImpl(RE::hkVector4(want.x * hs, want.y * hs, f[2], 0.0f));
+						if (e.Length() > 1.0f) ++carryN_[0];
+					}
+				}
+			} else {
+				holdHave_ = false;
+				stillT_ = 0.0f;
+			}
+			if ((carryN_[0] || carryN_[1] || carryN_[2]) && (carryLogT_ -= a_dt) <= 0.0f) {
+				carryLogT_ = 2.0f;
+				logger::info("Carry: standing {} frames more than 1 off the spot, {} jump frames ridden, {} momentum given", carryN_[0], carryN_[1], carryN_[2]);
+				carryN_[0] = carryN_[1] = carryN_[2] = 0;
+			}
+		}
+
+		// v1.8.71: the stand glide: seat to standing spot in the boat's frame, then collision back, the boat's speed and the nudge
+		bool TendStandGlide(const RE::NiPoint3& a_at, const RE::NiMatrix3& a_rot)
+		{
+			if (!standGlide_) return false;
+			auto* player = RE::PlayerCharacter::GetSingleton();
+			if (!player) { standGlide_ = false; return false; }
+			const float t = (rideTime_ - standAt_) / kStandGlide;
+			const float k = Smooth(t);
+			player->SetPosition(a_at + a_rot * (standFrom_ + (standTo_ - standFrom_) * k), true);
+			auto* cc = player->GetCharController();
+			if (t < 1.0f) {
+				if (cc) cc->SetLinearVelocityImpl(RE::hkVector4());
+				return true;
+			}
+			standGlide_ = false;
+			player->SetCollision(true);
+			if (cc) {
+				const float hs = RE::bhkWorld::GetWorldScale();
+				const float hd = yaw_ + (bowFlip_ ? kPi : 0.0f);
+				cc->SetLinearVelocityImpl(RE::hkVector4(std::sin(hd) * speed_ * hs, std::cos(hd) * speed_ * hs, 0.0f, 0.0f));
+			}
+			nudgeTime_ = nudgeOn_ ? 0.0f : -1.0f;
+			nudgeFrames_ = 0;
+			logger::info("Seat: glide out done, standing");
+			return true;
+		}
+
 		void TendNudge(float a_dt)
 		{
 			if (nudgeTime_ < 0.0f) return;
@@ -4158,20 +7345,450 @@ namespace
 		{
 			auto* player = RE::PlayerCharacter::GetSingleton();
 			if (!player) return false;
-			if (auto* cc = player->GetCharController(); cc && cc->supportBody.get() == HkBody()) return true;
-			const RE::NiPoint3 l = PlayerLocal(player);
-			return std::abs(l.x) < 120.0f && l.y > -450.0f && l.y < 320.0f && l.z > -30.0f && l.z < 150.0f;
+			// v1.8.29b: only a real body (a boat whose hull is not loaded has none, and nor does the player in the air: they
+			// matched, so a far away boat counted you aboard and took the boat in use from under you as you stood up)
+			// v1.8.35: in the water you are never aboard: the support body is left over from the deck you jumped off (the
+			// Board prompt went missing)
+			if (auto* st = player->AsActorState(); st && st->IsSwimming()) return false;
+			const RE::NiPoint3 l = havePose_ ? PlayerLocal(player) : RE::NiPoint3{};
+			const auto& dm = Dims();  // v1.8.8: each boat its own size
+			if (auto* cc = player->GetCharController(); cc) {
+				const auto* hb = HkBody();
+				if (hb && cc->supportBody.get() == hb && (!havePose_ || l.z > dm.aboardZlo)) return true;
+			}
+			if (!havePose_) return false;
+			return std::abs(l.x) < dm.aboardX && l.y > dm.aboardYlo && l.y < dm.aboardYhi && l.z > dm.aboardZlo && l.z < dm.aboardZhi;
 		}
 
+		// v1.8.72: movement is no longer switched off seated: with it off the HUD goes to its movement-disabled mode, which
+		// hides the compass (Miguel: no compass at the helm). The walk is held instead: the game's move input zeroed every
+		// frame seated (HoldMoveInput), before the player update; the seat glue holds the body as before.
+		// [Helm] KeepCompass=0 goes back to switching movement off.
+		static bool KeepCompass()
+		{
+			static const bool s_on = GetPrivateProfileIntA("Helm", "KeepCompass", 1, Plankton::IniPath().c_str()) != 0;
+			return s_on;
+		}
 		static void SetControls(bool a_enable)
 		{
 			if (auto* cm = RE::ControlMap::GetSingleton()) {
 				for (auto flag : { RE::ControlMap::UEFlag::kMovement, RE::ControlMap::UEFlag::kFighting, RE::ControlMap::UEFlag::kJumping,
 						 RE::ControlMap::UEFlag::kSneaking, RE::ControlMap::UEFlag::kActivate }) {
+					if (flag == RE::ControlMap::UEFlag::kMovement && KeepCompass() && !a_enable) continue;
 					cm->ToggleControls(flag, a_enable, a_enable);  // back on at once when standing up
 				}
 			}
 		}
+	public:
+		// v1.8.74: the spin-outs came back when the carriers got their own races (v1.8.66): mods that leave the mannequin
+		// alone by its race no longer know ours. One way a camera dives under you and looks up is the game camera's target
+		// set to the hidden carrier under the boat. The target is put back to the player every frame it is a carrier, and
+		// logged ("Camera: target was ..."); any other target while seated is logged only.
+		int camTgtLogs_{ 0 };
+		RE::FormID camTgtLast_{ 0 };
+		void GuardCameraTarget()
+		{
+			auto* cam = RE::PlayerCamera::GetSingleton();
+			auto* pl = RE::PlayerCharacter::GetSingleton();
+			if (!cam || !pl) return;
+			auto tgt = cam->cameraTarget.get();
+			RE::Actor* t = tgt.get();
+			if (!t || t == pl) { camTgtLast_ = 0; return; }
+			const bool carrier = IsCarrierBase(t->GetActorBase());
+			if (!carrier && !seated_) return;
+			if (t->GetFormID() != camTgtLast_ && camTgtLogs_ < 40) {
+				++camTgtLogs_;
+				logger::info("Camera: target was {:08X} '{}' (base {:08X}{}), {}", t->GetFormID(), t->GetName(),
+					t->GetActorBase() ? t->GetActorBase()->GetFormID() : 0u, carrier ? ", our carrier" : "", carrier ? "put back on the player" : "left alone");
+			}
+			camTgtLast_ = t->GetFormID();
+			if (carrier) cam->cameraTarget = RE::ActorHandle(pl);
+		}
+		void HoldMoveInput() const
+		{
+			if (!seated_ || !KeepCompass()) return;
+			if (auto* pc = RE::PlayerControls::GetSingleton()) {
+				pc->data.moveInputVec = RE::NiPoint2{ 0.0f, 0.0f };
+				pc->data.autoMove = false;
+			}
+		}
+	private:
+
+		// v1.8.40: at the sailing boat's helm the helm clip (HelmTiller_Loop.hkx: sat by the tiller, the right hand on its
+		// handle, the left on the thigh) replaces the chair sit, a moment after sitting; refused (the behaviours not built
+		// with it): tried again every 0.5 s, 10 times, then the chair sit stays. Ended by the stand up's release events.
+		// v1.8.41: three poses, each with the hand round the handle where the tiller is: at rest, the tiller over to the
+		// left (steering right, HelmTiller_Left) and over to the right (steering left, HelmTiller_Right). Steering switches
+		// the pose (the behaviour blends them over 0.6 s) and the tiller is turned over the same 0.6 s, so the hand stays on
+		// it the whole way (no bones bent by the plugin: v1.8.40's did).
+	public:
+		// v1.8.65: Character Behaviors Enhanced (Nexus report on 1.0.86): seated, turning, backing or stopping the boat made
+		// the helmsman stand / hop. Two tools:
+		//  - CalmGraph: every frame seated, before and after the game's update, the body's movement values (Speed,
+		//    Direction, TurnDelta and their damped / sampled copies) are set to rest, so a behaviour overhaul that starts
+		//    turn / stop / step clips from them has nothing to start from (the boat moves and turns him, he does not walk).
+		//  - GraphWatch: around each tiller pose change and each big change of the boat's speed or turn, the body's values
+		//    are logged every 0.1 s for 1.2 s ("Graph:" lines), so a test with CBE shows what set him off.
+		static void CalmGraph(RE::Actor* a_actor)
+		{
+			if (!a_actor) return;
+			for (const char* v : { "Speed", "SpeedSampled", "SpeedDamped", "Direction", "DirectionDamped", "TurnDelta", "TurnDeltaDamped", "TurnDeltaSmooth", "SpeedAcc" })
+				a_actor->SetGraphVariableFloat(v, 0.0f);
+			a_actor->SetGraphVariableBool("IsMoving", false);
+		}
+		void CalmSeated()
+		{
+			if (!seated_ || !HelmCamSet::Get().calmGraph) return;
+			CalmGraph(RE::PlayerCharacter::GetSingleton());
+		}
+		float gwLeft_{ 0.0f }, gwTick_{ 0.0f };
+		int gwLines_{ 0 };
+		float gwSpeed_{ 0.0f }, gwTurn_{ 0.0f };
+		void GraphWatch(RE::Actor*, const char* a_why)
+		{
+			static const bool s_on = GetPrivateProfileIntA("Helm", "GraphLog", 0, Plankton::IniPath().c_str()) != 0;
+			if (!s_on || gwLines_ > 400) return;
+			logger::info("Graph: watch ({})", a_why);
+			gwLeft_ = 1.2f;
+			gwTick_ = 0.0f;
+		}
+		void TendGraphWatch(float a_dt, RE::PlayerCharacter* a_player)
+		{
+			// v1.8.67: off for the release (RowRim.ini [Helm] GraphLog=1 for a report)
+			static const bool s_on = GetPrivateProfileIntA("Helm", "GraphLog", 0, Plankton::IniPath().c_str()) != 0;
+			if (!s_on || !seated_ || !a_player) { gwLeft_ = 0.0f; return; }
+			// big changes of the boat's way or turn start a watch too
+			const float sp = std::abs(speed_), tr = std::abs(turn_);
+			if (std::abs(sp - gwSpeed_) > 60.0f || std::abs(tr - gwTurn_) > 0.25f) {
+				GraphWatch(a_player, std::format("boat speed {:.0f} -> {:.0f}, turn {:.2f} -> {:.2f}", gwSpeed_, sp, gwTurn_, tr).c_str());
+				gwSpeed_ = sp;
+				gwTurn_ = tr;
+			}
+			if (gwLeft_ <= 0.0f) return;
+			gwLeft_ -= a_dt;
+			if ((gwTick_ -= a_dt) > 0.0f) return;
+			gwTick_ = 0.1f;
+			float speed = 0, dir = 0, turn = 0;
+			bool sit = false, jump = false, drive = false, moving = false;
+			int state = 0;
+			a_player->GetGraphVariableFloat("Speed", speed);
+			a_player->GetGraphVariableFloat("Direction", dir);
+			a_player->GetGraphVariableFloat("TurnDelta", turn);
+			a_player->GetGraphVariableBool("bIsSitting", sit);
+			a_player->GetGraphVariableBool("bInJumpState", jump);
+			a_player->GetGraphVariableBool("bAnimationDriven", drive);
+			a_player->GetGraphVariableBool("IsMoving", moving);
+			a_player->GetGraphVariableInt("iState", state);
+			const auto* st = a_player->AsActorState();
+			++gwLines_;
+			logger::info("Graph: Speed {:.1f} Dir {:.2f} TurnDelta {:.3f} | sitting {} jump {} driven {} moving {} iState {} | sit state {} | helm clip {} pose {} | boat {:.0f} turn {:.2f}",
+				speed, dir, turn, sit, jump, drive, moving, state, st ? static_cast<int>(st->actorState1.sitSleepState) : -1, helmAnimOn_, helmPose_, speed_, turn_);
+		}
+	private:
+		void TendHelmAnim(float a_dt, RE::PlayerCharacter* a_player)
+		{
+			const bool want = seated_ && seatKind_ == SeatKind::kHelm && Kind() == kKindSail;
+			if (!want) {
+				if (helmAnimOn_) {
+					helmAnimOn_ = false;
+					a_player->NotifyAnimationGraph(kRowStopEvent);
+					TrySitAnim(a_player);
+					logger::info("Helm anim: ended (not at the sailing boat's helm)");
+				}
+				return;
+			}
+			if (helmAnimOn_) {
+				const int pose = !HelmCamSet::Get().helmPoses ? 0 : helmSteer_ > 0.25f ? 1 : helmSteer_ < -0.25f ? -1 : 0;  // v1.8.65: poses can be off
+				if (pose != helmPose_ && rideTime_ - helmPoseAt_ >= 0.05f) {
+					GraphWatch(a_player, pose > 0 ? "pose left" : pose < 0 ? "pose right" : "pose rest");  // v1.8.42: at once (was 0.25 s: let go early, the hand went on to the end first)
+					const char* ev = pose > 0 ? kHelmLeftEvent : pose < 0 ? kHelmRightEvent : kHelmStartEvent;
+					if (a_player->NotifyAnimationGraph(ev)) {
+						helmPoseFromA_ = helmTillerA_;
+						helmPose_ = pose;
+					} else if (!helmPoseWarned_) {
+						helmPoseWarned_ = true;
+						logger::info("Helm anim: {} rejected (the behaviour has only the rest pose: run Pandora with RowRim's)", ev);
+					}
+					helmPoseAt_ = rideTime_;
+				}
+				// the tiller over to the pose's side over the clip's blend (0.6 s), eased at both ends
+				const float t = std::clamp((rideTime_ - helmPoseAt_) / 0.6f, 0.0f, 1.0f), k = t * t * (3.0f - 2.0f * t);
+				helmTillerA_ = helmPoseFromA_ + (static_cast<float>(helmPose_) * 0.45f - helmPoseFromA_) * k;
+				return;
+			}
+			if (sitDeferred_ || rideTime_ - sitAt_ < 0.4f) return;  // v1.8.71: not while gliding onto the seat
+			if ((helmRetry_ -= a_dt) > 0.0f) return;
+			if (!helmEverOk_ && helmRejects_ >= 10) return;
+			if (a_player->NotifyAnimationGraph(kHelmStartEvent)) {
+				helmAnimOn_ = true;
+				helmEverOk_ = true;
+				helmAnimAt_ = rideTime_;
+				helmPose_ = 0;
+				helmPoseAt_ = rideTime_;
+				helmPoseFromA_ = helmTillerA_ = helmHandA_ = rudderA_;
+				helmPhiHave_ = false;
+				helmLoggedPose_ = 99;
+				logger::info("Helm anim: {} accepted{}", kHelmStartEvent, helmRejects_ ? std::format(" after {} tries", helmRejects_) : std::string{});
+				helmRejects_ = 0;
+			} else {
+				helmRetry_ = 0.5f;
+				if (++helmRejects_ == 1) logger::info("Helm anim: {} rejected, retrying every 0.5 s", kHelmStartEvent);
+				if (helmRejects_ == 10 && !helmEverOk_)
+					Print("RowRim: the helm animation was refused 10 times. Run Pandora (or Nemesis) with RowRim enabled. Sitting without it for now.");
+			}
+		}
+
+
+	public:
+		// v1.8.42: the tiller follows his hand. The game blends the helm poses its own way (and finishes or reverses a blend
+		// as it likes when the steering changes half way), so a tiller turned on a timer ran ahead of the hand or behind it.
+		// The tiller is turned to where his wrist is: its angle round the tiller's post, against that angle at rest (measured
+		// once the rest pose has settled). v1.8.45: the tiller is the boat's again (it rolls and pitches with it; v1.8.43
+		// kept it upright with him): the wrist's angle is taken in the boat's frame. v1.8.46: his body rolls and pitches with
+		// the boat too (BodyTilt, before this), so his hand stays on it (v1.8.45's arm script removed). From the camera hooks, after the boat is placed for drawing (its tilt this frame).
+		void TillerHelm()
+		{
+			if (!sbTiller_ || !visual_ || sbRudderOn_ != visual_.get() || !sbTiller_->parent || Kind() != kKindSail) { helmHandLive_ = false; return; }
+			static constexpr float kPivX = 49.0f, kPivY = -226.0f, kMax = 0.55f, kRatio = 0.8f;
+			const float now = rideTime_, dt = std::clamp(now - tillerHelmT_, 0.0f, 0.1f);
+			tillerHelmT_ = now;
+			const bool on = seated_ && helmAnimOn_ && !helmPoseWarned_;
+			helmHandLive_ = false;
+			auto* player = RE::PlayerCharacter::GetSingleton();
+			auto* cam = RE::PlayerCamera::GetSingleton();
+			if (!on || !player || (cam && cam->IsInFirstPerson())) return;
+			auto* r3 = player->Get3D(false);
+			auto* hand = r3 ? r3->GetObjectByName("NPC R Hand [RHnd]") : nullptr;
+			if (!hand) return;
+			const RE::NiTransform& PW = sbTiller_->parent->world;
+			const RE::NiPoint3 m = PW.Invert() * hand->world.translate;  // in the model (the boat's own frame)
+			const float phi = std::atan2(m.x - kPivX, m.y - kPivY);     // round the post, from the bow toward starboard
+			if (helmPose_ == 0 && now - helmPoseAt_ > 0.8f) {
+				helmPhi0_ = helmPhiHave_ ? helmPhi0_ + (phi - helmPhi0_) * (1.0f - std::exp(-4.0f * dt)) : phi;
+				helmPhiHave_ = true;
+			}
+			if (!helmPhiHave_) return;
+			const float want = std::clamp(-(phi - helmPhi0_), -kMax, kMax) / kRatio;  // + turns it to port, as the rudder's +
+			helmHandA_ += (want - helmHandA_) * (1.0f - std::exp(-25.0f * dt));
+			helmHandLive_ = true;
+			if (now - helmPoseAt_ > 1.0f && helmLoggedPose_ != helmPose_) {
+				helmLoggedPose_ = helmPose_;
+				logger::info("Helm anim: pose {} settled: wrist {:+.3f} rad round the post from rest, tiller {:+.3f} rad{}", helmPose_, -(phi - helmPhi0_),
+					helmHandA_ * kRatio, std::abs(phi - helmPhi0_) > kMax ? " (held at the stop)" : "");
+			}
+		}
+
+		// ---- v1.8.51: pink seat markers (Settings / Crew: Show seat markers, oas "crew markers on|off"): a figure on each
+		// seat of the boat in use, sitting as they would (the chair sit, the ledge sit, the dog), facing their way, moved
+		// at once as the seat is tuned. Drawn only (no collision), on the boat's own model so they ride with it. ----
+		static constexpr const char* kSeatMarkerModel = "RowRim\\RowRim_SeatMarker.nif";
+		static inline RE::NiPointer<RE::NiNode> s_mkSrc;
+		static inline bool s_mkFailed = false;
+		RE::NiPointer<RE::NiNode> mkRoot_;
+		RE::NiNode* mkOn_{ nullptr };
+		void DropSeatMarkers()
+		{
+			if (!mkRoot_) return;
+			if (visual_ && mkOn_ == visual_.get() && mkRoot_->parent == visual_.get()) {
+				RE::NiPointer<RE::NiAVObject> tmp;
+				visual_->DetachChild(mkRoot_.get(), tmp);
+			}
+			mkRoot_.reset();
+			mkOn_ = nullptr;
+		}
+	public:
+		void SeatMarkers()
+		{
+			if (!Crew::g_markers || !visual_ || !IsActive() || !HaveBoat()) { DropSeatMarkers(); return; }
+			if (mkRoot_ && mkOn_ != visual_.get()) { mkRoot_.reset(); mkOn_ = nullptr; }  // another model: the old one keeps its own
+			if (!mkRoot_) {
+				if (s_mkFailed) return;
+				if (!Plankton::LoadModel(s_mkSrc, kSeatMarkerModel)) { s_mkFailed = true; logger::warn("Seat markers: meshes\\{} missing", kSeatMarkerModel); return; }
+				auto* r = RE::NiNode::Create(8);
+				r->name = "RowRim_SeatMarkers";
+				for (int i = 0; i < 8; ++i) {
+					auto* obj = s_mkSrc->Clone();
+					auto* n = obj ? obj->AsNode() : nullptr;
+					if (!n) break;
+					n->name = "RowRim_SeatMarker";
+					n->local = RE::NiTransform{};
+					r->AttachChild(n, true);
+				}
+				mkRoot_ = RE::NiPointer<RE::NiNode>(r);
+				visual_->AttachChild(r, true);
+				mkOn_ = visual_.get();
+				logger::info("Seat markers: on the {}", Dims().label);
+			}
+			const int k = Kind();
+			const float sc = ModelScale();
+			mkRoot_->local = RE::NiTransform{};
+			mkRoot_->local.scale = 1.0f / sc;  // the markers in game units, as the seats are
+			const int nh = Crew::HumanCount(k), nd = Crew::DogCount(k);
+			int idx = 0;
+			for (auto& c : mkRoot_->GetChildren()) {
+				auto* n = c ? c->AsNode() : nullptr;
+				const int i = idx++;
+				if (!n) continue;
+				if (i >= nh + nd) { n->SetAppCulled(true); continue; }
+				const bool dog = i >= nh;
+				const int slot = dog ? i - nh : i;
+				float yaw = 0.0f;
+				n->local.translate = Crew::SeatLocal(k, sc, dog, slot, yaw);
+				const float cs = std::cos(yaw), sn = std::sin(yaw);  // the figure's front (+y) turned to (sin yaw, cos yaw)
+				auto& m = n->local.rotate;
+				m.entry[0][0] = cs;   m.entry[0][1] = sn; m.entry[0][2] = 0.0f;
+				m.entry[1][0] = -sn;  m.entry[1][1] = cs; m.entry[1][2] = 0.0f;
+				m.entry[2][0] = 0.0f; m.entry[2][1] = 0.0f; m.entry[2][2] = 1.0f;
+				const std::string_view want = dog ? "Dog" : Crew::Def(k, false, slot).ledge ? "Ledge" : "Chair";
+				n->SetAppCulled(false);
+				for (auto& part : n->GetChildren()) {
+					if (!part) continue;
+					const char* nm = part->name.c_str();
+					part->SetAppCulled(!nm || want != nm);
+				}
+			}
+			RE::NiUpdateData ud{};
+			mkRoot_->Update(ud);
+		}
+		static void SeatMarkersAll() { for (int k = 0; k < kKindCount; ++k) Of(k).SeatMarkers(); }
+		// v1.8.55: the third person camera may zoom further out while you are on a boat (seated or aboard): the game's
+		// fMaxCurrentZoom:Camera is raised to RowRim.ini [Camera] BoatZoomOut (default 6, the game's own 3 means "as before")
+		// while aboard and put back as you step off (the zoom brought back in to the game's limit if it was further out)
+		static bool AnySeated()
+		{
+			for (int k = 0; k < kKindCount; ++k)
+				if (Of(k).Seated()) return true;
+			return false;
+		}
+		// v1.8.78: seated on any boat the game's third person camera never follows an animated bone: the row clip and the tiller
+		// clip (OarsHelmStart) turn a bone (animatedBoneName), the camera takes it into animationRotation / the orbit and spins
+		// with it. Switched off and put to identity before and after the game's camera update; what it had done is logged.
+		static void CutAnimCam(RE::ThirdPersonState* a_tps, const char* a_when)
+		{
+			static int s_logs = 0;
+			static float s_lastX = 0.0f;
+			const bool seated = AnySeated();
+			if (!a_tps) return;
+			if (std::isfinite(a_tps->freeRotation.x) && std::fabs(a_tps->freeRotation.x) > kPi) a_tps->freeRotation.x = std::remainder(a_tps->freeRotation.x, 2.0f * kPi);
+			if (!std::isfinite(a_tps->freeRotation.x)) a_tps->freeRotation.x = 0.0f;
+			if (!seated) { s_lastX = a_tps->freeRotation.x; return; }
+			const bool toggled = a_tps->toggleAnimCam;
+			const float aw = std::fabs(a_tps->animationRotation.w);
+			const float dx = std::fabs(std::remainder(a_tps->freeRotation.x - s_lastX, 2.0f * kPi));
+			if ((toggled || aw < 0.9999f || dx > 0.3f) && s_logs < 60) {
+				++s_logs;
+				logger::info("AnimCam {}: toggleAnimCam {} | animationRotation w {:.4f} xyz {:.3f} {:.3f} {:.3f} | bone '{}' | orbit x {:.3f} (moved {:.3f}) y {:.3f} enabled {} | yaw {:.3f}->{:.3f}",
+					a_when, toggled, a_tps->animationRotation.w, a_tps->animationRotation.x, a_tps->animationRotation.y, a_tps->animationRotation.z,
+					a_tps->animatedBoneName.c_str() ? a_tps->animatedBoneName.c_str() : "", a_tps->freeRotation.x, dx, a_tps->freeRotation.y,
+					a_tps->freeRotationEnabled, a_tps->currentYaw, a_tps->targetYaw);
+			}
+			a_tps->toggleAnimCam = false;
+			a_tps->animationRotation = RE::NiQuaternion(1.0f, 0.0f, 0.0f, 0.0f);
+			s_lastX = a_tps->freeRotation.x;
+		}
+		static bool AnyOnBoat()
+		{
+			for (int k = 0; k < kKindCount; ++k)
+				if (Of(k).OnBoat()) return true;
+			return false;
+		}
+		static void TendZoom(RE::ThirdPersonState* a_tps)
+		{
+			static float s_orig = -1.0f, s_boat = -1.0f;
+			static bool s_raised = false;
+			static auto* set = RE::INISettingCollection::GetSingleton() ? RE::INISettingCollection::GetSingleton()->GetSetting("fMaxCurrentZoom:Camera") : nullptr;
+			if (!set) return;
+			if (s_boat < 0.0f) {
+				char b[32]{};
+				GetPrivateProfileStringA("Camera", "BoatZoomOut", "14.0", b, sizeof(b), Plankton::IniPath().c_str());
+				try { s_boat = std::clamp(std::stof(b), 1.0f, 40.0f); } catch (...) { s_boat = 14.0f; }
+				logger::info("Camera: zoom out on the boat to {:.1f} (RowRim.ini [Camera] BoatZoomOut; the game's own {:.1f})", s_boat, set->data.f);
+			}
+			bool aboard = false;
+			for (int k = 0; k < kKindCount && !aboard; ++k) aboard = Of(k).OnBoat();
+			if (aboard && !s_raised) {
+				s_orig = set->data.f;
+				if (s_boat > s_orig) { set->data.f = s_boat; s_raised = true; }
+			} else if (!aboard && s_raised) {
+				set->data.f = s_orig;
+				s_raised = false;
+				if (a_tps) {
+					a_tps->targetZoomOffset = (std::min)(a_tps->targetZoomOffset, s_orig);
+					a_tps->currentZoomOffset = (std::min)(a_tps->currentZoomOffset, s_orig);
+				}
+			}
+		}
+		// v1.8.46: the seated body rolls and pitches with the boat. The actor is never tilted and never put on the boat's
+		// nodes (it stays the game's, upright, with its own collision): only his drawn 3D (the third person root) is turned
+		// by the boat's roll and pitch this frame (the boat's turn without its heading), about his own root (on the seat),
+		// on top of the game's own turn of him; the game's turn is put back as he stands up. Eased in and out over 0.3 s.
+		// From the camera hooks, after the boat is placed for drawing (its tilt this frame, the heel and rocking settings
+		// and the wind's heel all in it).
+		void BodyTilt()
+		{
+			auto* player = RE::PlayerCharacter::GetSingleton();
+			auto* root = player ? player->Get3D(false) : nullptr;
+			const float now = rideTime_, dt = std::clamp(now - bodyTiltT_, 0.0f, 0.1f);
+			bodyTiltT_ = now;
+			const bool on = seated_ && visual_ && root && havePose_;
+			bodyTiltW_ = std::clamp(bodyTiltW_ + (on ? dt : -dt) / 0.3f, 0.0f, 1.0f);
+			if (!root || root != bodyRoot_) { bodyRoot_ = root; bodyTiltOn_ = false; }
+			if (!root) return;
+			auto same = [](const RE::NiMatrix3& a, const RE::NiMatrix3& b) {
+				for (int r = 0; r < 3; ++r) for (int c = 0; c < 3; ++c) if (a.entry[r][c] != b.entry[r][c]) return false;
+				return true;
+			};
+			// the game's own turn of him this frame (unless it left ours there)
+			const RE::NiMatrix3 base = (bodyTiltOn_ && same(root->local.rotate, bodyLast_)) ? bodyBase_ : root->local.rotate;
+			bodyBase_ = base;
+			RE::NiUpdateData data{};
+			if (bodyTiltW_ <= 0.0f || !visual_) {
+				if (bodyTiltOn_) { root->local.rotate = base; root->Update(data); ReplaceRiding(); bodyTiltOn_ = false; }
+				return;
+			}
+			const RE::NiMatrix3 B = haveDraw_ && VisualOnPlayer() ? drawRot_ : visual_->world.rotate;  // v1.8.57: riding on the root, its world is the tilt's own output
+			RE::NiPoint3 f = B * RE::NiPoint3{ 0.0f, 1.0f, 0.0f };
+			f.z = 0.0f;
+			if (f.Length() < 1e-3f) return;
+			f = f / f.Length();
+			const RE::NiPoint3 up{ 0.0f, 0.0f, 1.0f }, rt = f.Cross(up);
+			RE::NiMatrix3 Y;
+			for (int i = 0; i < 3; ++i) { Y.entry[i][0] = (&rt.x)[i]; Y.entry[i][1] = (&f.x)[i]; Y.entry[i][2] = (&up.x)[i]; }
+			const RE::NiMatrix3 I = MakeMat(1, 0, 0, 0, 1, 0, 0, 0, 1);
+			const float w = bodyTiltW_ * bodyTiltW_ * (3.0f - 2.0f * bodyTiltW_);
+			const RE::NiMatrix3 tilt = SlerpM(I, B * Y.Transpose(), w);  // the boat's roll and pitch, in the world
+			const RE::NiMatrix3 P = root->parent ? root->parent->world.rotate : I;
+			root->local.rotate = P.Transpose() * (tilt * (P * base));
+			root->Update(data);
+			ReplaceRiding();  // v1.8.57
+			bodyLast_ = root->local.rotate;
+			bodyTiltOn_ = true;
+		}
+		// v1.8.54: the tilt is taken back off before the game's own frame (the player update) and before its camera update,
+		// so the game never reads a tilted body: his heading (the sit keeps it from his 3D) and the camera's pivot on him
+		// were picked up off the tilted root, the turn fed back into itself frame after frame and the third person camera
+		// spun out. BodyTilt puts it on again after the camera update, for drawing only.
+		void BodyUntilt()
+		{
+			if (!bodyTiltOn_) return;
+			auto* player = RE::PlayerCharacter::GetSingleton();
+			auto* root = player ? player->Get3D(false) : nullptr;
+			bodyTiltOn_ = false;
+			if (!root || root != bodyRoot_) return;
+			bool same = true;
+			for (int r = 0; r < 3 && same; ++r) for (int c = 0; c < 3; ++c) if (root->local.rotate.entry[r][c] != bodyLast_.entry[r][c]) { same = false; break; }
+			if (!same) return;  // the game already put its own turn there
+			root->local.rotate = bodyBase_;
+			RE::NiUpdateData data{};
+			root->Update(data);
+			ReplaceRiding();  // v1.8.57
+		}
+	private:
+		float tillerHelmT_{ 0.0f }, bodyTiltT_{ 0.0f }, bodyTiltW_{ 0.0f };
+		bool helmHandLive_{ false }, bodyTiltOn_{ false };
+		int helmLoggedPose_{ 99 };
+		RE::NiAVObject* bodyRoot_{ nullptr };
+		RE::NiMatrix3 bodyBase_{}, bodyLast_{};
 
 		static bool TrySitAnim(RE::PlayerCharacter* a_player)
 		{
@@ -4190,15 +7807,34 @@ namespace
 		// and at the helm the seat is as set
 		RE::NiPoint3 SeatPos() const
 		{
-			if (seatKind_ != SeatKind::kRower) return seat_;
+			const RE::NiPoint3 g = glideOff_ * (1.0f - GlideK());  // v1.8.71: the sit glide, from where you stood onto the seat
+			if (seatKind_ != SeatKind::kRower) return seat_ + g;
 			const float k = rowShiftW_ * rowShiftW_ * (3.0f - 2.0f * rowShiftW_);
-			return RE::NiPoint3{ rowSeat_.x, rowSeat_.y + rowShift_ * k, rowSeat_.z };
+			return RE::NiPoint3{ rowSeat_.x + g.x, rowSeat_.y + rowShift_ * k + g.y, rowSeat_.z + g.z };
 		}
 		float SeatFacing() const { return yaw_ + (bowFlip_ ? kPi : 0.0f) + (seatKind_ == SeatKind::kRower ? kPi : 0.0f); }
+		// ---- v1.8.71: the sit and stand glides (Miguel: the body snapped ~120 units and half a turn in one frame onto the seat).
+		// Sitting: the body slides from where you stood onto the seat and turns to the seat's way over kSitGlide, then sits.
+		// Standing: it rises off the seat and steps to the standing spot over kStandGlide. All in the boat's frame, so a moving
+		// boat carries the glide with it.
+		static constexpr float kSitGlide = 0.45f;
+		static constexpr float kStandGlide = 0.35f;
+		bool gliding_{ false };
+		float glideAt_{ 0.0f };
+		RE::NiPoint3 glideOff_{};
+		float glideYaw_{ 0.0f };  // the start facing, off the seat's
+		bool sitDeferred_{ false };
+		bool standGlide_{ false };
+		float standAt_{ 0.0f };
+		RE::NiPoint3 standFrom_{}, standTo_{};
+		static float Smooth(float t) { t = std::clamp(t, 0.0f, 1.0f); return t * t * (3.0f - 2.0f * t); }
+		float GlideK() const { return gliding_ ? Smooth((rideTime_ - glideAt_) / kSitGlide) : 1.0f; }
+		float SeatFacingNow() const { return SeatFacing() + glideYaw_ * (1.0f - GlideK()); }
 		SeatKind NearestSeat() const
 		{
 			auto* player = RE::PlayerCharacter::GetSingleton();
 			if (!player) return SeatKind::kRower;
+			if (Kind() != kKindRow) return SeatKind::kHelm;  // v1.8.8 (v1.8.26: no oars on either sailing boat): the helm
 			const RE::NiPoint3 l = PlayerLocal(player);
 			return std::abs(l.y - rowSeat_.y) <= std::abs(l.y - seat_.y) ? SeatKind::kRower : SeatKind::kHelm;
 		}
@@ -4208,6 +7844,38 @@ namespace
 		{
 			auto* st = a_actor ? a_actor->AsActorState() : nullptr;
 			return !st || st->GetWeaponState() == RE::WEAPON_STATE::kSheathed;
+		}
+		// v1.8.29c: R while seated switches seats (the rowboat: the oars <-> the stern seat; the sailing boats have only the
+		// helm). Stood up, then sat down in the other seat a moment later. RowRim.ini [Controls] SeatSwitchKey (a DirectX
+		// scan code, 19 = R; 0 off).
+		int seatSwitchTo_{ -1 };
+		float seatSwitchT_{ 0.0f };
+		static int SeatSwitchKey()
+		{
+			static int k = -2;
+			if (k == -2) k = GetPrivateProfileIntA("Controls", "SeatSwitchKey", 0x13, Plankton::IniPath().c_str());
+			return k;
+		}
+	public:
+		void OnSeatSwitch(std::uint32_t a_key)
+		{
+			if (!seated_ || SeatSwitchKey() <= 0 || static_cast<int>(a_key) != SeatSwitchKey()) return;
+			if (Kind() != kKindRow) return;  // one seat only (the helm)
+			const SeatKind to = seatKind_ == SeatKind::kRower ? SeatKind::kHelm : SeatKind::kRower;
+			logger::info("Seat: switching to the {}", to == SeatKind::kRower ? "oars" : "stern seat");
+			StandUp("switching seats");
+			seatSwitchTo_ = static_cast<int>(to);
+			seatSwitchT_ = 0.35f;
+		}
+	private:
+		void TendSeatSwitch(float a_dt)
+		{
+			if (seatSwitchTo_ < 0) return;
+			if ((seatSwitchT_ -= a_dt) > 0.0f) return;
+			const SeatKind to = static_cast<SeatKind>(seatSwitchTo_);
+			seatSwitchTo_ = -1;
+			if (seated_ || !PlayerAboard()) return;
+			SitDown(to);
 		}
 		void RequestSit(SeatKind a_kind)
 		{
@@ -4232,31 +7900,6 @@ namespace
 			}
 			sitWaiting_ = false;
 			SitDown(sitWaitKind_);
-		}
-		// v1.7.26: the fishing moves the player to its own standing spot, worked out from the marker (no shore here: it
-		// dropped you in the water by the boat). For 4 s after E on the supplies a jump of the player off the boat is put
-		// back where you stood on the deck, keeping the facing the fishing gave you.
-		float fishWatch_{ 0.0f };
-		RE::NiPoint3 fishLocal_{};
-		RE::NiPoint3 fishPrev_{};
-		void TendFishWatch(float a_dt)
-		{
-			if (fishWatch_ <= 0.0f) return;
-			fishWatch_ -= a_dt;
-			auto* player = RE::PlayerCharacter::GetSingleton();
-			if (!player || !havePose_) { fishWatch_ = 0.0f; return; }
-			const RE::NiPoint3 p = player->GetPosition();
-			const float jump = (p - fishPrev_).Length();
-			fishPrev_ = p;
-			if (jump < 40.0f) return;
-			const RE::NiPoint3 back = lastAt_ + lastRot_ * fishLocal_;
-			const RE::NiPoint3 l = PlayerLocal(player);
-			logger::info("Fish: the fishing moved you {:.0f} to ({:.0f},{:.0f},{:.0f}) (boat space {:.0f},{:.0f},{:.0f}; marker ({:.0f},{:.0f},{:.0f})){}",
-				jump, p.x, p.y, p.z, l.x, l.y, l.z, Gear::g_fishSpot.x, Gear::g_fishSpot.y, Gear::g_fishSpot.z, PlayerAboard() ? ", still aboard" : ", off the boat: put back on the deck");
-			if (PlayerAboard()) return;
-			player->SetPosition(back, true);
-			if (auto* cc = player->GetCharController()) cc->SetLinearVelocityImpl(RE::hkVector4());
-			fishPrev_ = back;
 		}
 		// v1.7.31: the row clip stopped again a few times after standing up (see StandUp)
 		RE::ActorHandle unstickActor_;
@@ -4287,9 +7930,11 @@ namespace
 			p.at = a_at;
 			p.rot = a_rot;
 			p.yaw = yaw_ + (bowFlip_ ? kPi : 0.0f);
-			p.playerRows = seatKind_ == SeatKind::kRower;
-			p.deckZ = kDeckZ;
+			p.playerRows = seatKind_ == SeatKind::kRower || Kind() != kKindRow;  // v1.8.8 (v1.8.26: no oars on the sailing boats): no crew rower
+			p.deckZ = Dims().deckZ;
 			p.speed = speed_;
+			p.scale = ModelScale();  // v1.8.27
+			p.kind = Kind();         // v1.8.51: its own seats
 			return p;
 		}
 
@@ -4298,7 +7943,9 @@ namespace
 			auto* player = RE::PlayerCharacter::GetSingleton();
 			if (!player) return;
 			if (player->IsSneaking()) player->NotifyAnimationGraph("sneakStop");
+			seatFlipAt_ = NowS();  // v1.8.57
 			seated_ = true;
+			standGlide_ = false;  // v1.8.71
 			helm_ = true;
 			seatKind_ = a_kind;
 			{
@@ -4313,14 +7960,34 @@ namespace
 			rowShiftW_ = 0.0f;
 			oarsStowed_ = false;  // v1.2.4: swing out of the stow (if they were) onto the oarlocks
 			rowAnimOn_ = rowPending_ = resitPending_ = rowWant_ = false;
+			helmAnimOn_ = false; helmRetry_ = 0.0f; helmPose_ = 0;  // v1.8.40
 			inFwd_ = inBack_ = inLeft_ = inRight_ = false;
 			SetControls(false);
 			HoldTalk();          // v1.7.22
 			Crew::Stow(player);  // v1.7.22: weapon sheathed (still equipped), shield off, rowing or at the helm
 			player->SetCollision(false);  // v1.2.3: OAS rides with no player collision ("tcl": no collision, no gravity); the glue holds him
 			walkFix_ = 0.0f;
-			player->data.angle.z = SeatFacing();
-			const bool ok = TrySitAnim(player);
+			// v1.8.71: the glide starts where you stand (in the boat's frame); a far start (a load, a teleport) snaps as before
+			gliding_ = false;
+			glideOff_ = {};
+			glideYaw_ = 0.0f;
+			if (havePose_ && glideOn_) {
+				const RE::NiPoint3 seatW = lastAt_ + lastRot_ * SeatPos();
+				const RE::NiPoint3 off = lastRot_.Transpose() * (player->GetPosition() - seatW);
+				if (off.Length() < 250.0f) {
+					glideOff_ = off;
+					float dy = player->data.angle.z - SeatFacing();
+					while (dy > kPi) dy -= 2.0f * kPi;
+					while (dy < -kPi) dy += 2.0f * kPi;
+					glideYaw_ = dy;
+					glideAt_ = rideTime_;
+					gliding_ = true;
+					logger::info("Seat: glide in from {:.0f} off the seat, {:.2f} rad to turn", off.Length(), dy);
+				}
+			}
+			player->data.angle.z = SeatFacingNow();
+			sitDeferred_ = gliding_;
+			const bool ok = gliding_ ? true : TrySitAnim(player);
 			const auto& s = SeatPos();
 			if (havePose_) Crew::Board(CrewPose(lastAt_, lastRot_));  // v1.6.0: followers and crew board with you
 			if (a_kind == SeatKind::kRower)
@@ -4338,7 +8005,11 @@ namespace
 			auto* player = RE::PlayerCharacter::GetSingleton();
 			Crew::Release(havePose_ ? CrewPose(lastAt_, lastRot_) : Crew::g.pose);  // v1.6.0: they stand up with you
 			Pad::Reset();  // v1.7.8
+			seatFlipAt_ = NowS();  // v1.8.57
 			seated_ = false;
+			gliding_ = sitDeferred_ = false;  // v1.8.71
+			glideOff_ = {};
+			glideYaw_ = 0.0f;
 			inFwd_ = inBack_ = inLeft_ = inRight_ = false;
 			autoRow_ = false;  // v1.7.62
 			// v1.7.31: the row clip is stopped on whoever had it (the crew rower kept it for good: only the player got the
@@ -4356,6 +8027,7 @@ namespace
 				animRotUntil_ = rideTime_ + 3.0f;
 			}
 			rowAnimOn_ = rowPending_ = resitPending_ = rowWant_ = false;
+			helmAnimOn_ = false; helmPose_ = 0;  // v1.8.40: the release events below end the helm clip too
 			Crew::g.rowerRowing = false;
 			if (player) {
 				MaskSitForFreeLook(player, false);
@@ -4388,10 +8060,20 @@ namespace
 					// the floor is 42, feet at 45.
 					const bool rower = seatKind_ == SeatKind::kRower;
 					const float offY = rower ? -36.0f - sp.y : 65.0f;  // v1.4.0: the rower steps off to 36 aft of the thwart's middle (y 0), wherever the seat is
-					const float feetZ = rower ? kDeckZ + 2.0f : kDeckZ + 6.0f;
-					const RE::NiPoint3 w = RE::NiPoint3{ pos_.x, pos_.y, pos_.z + heave_ } + rot * RE::NiPoint3{ sp.x, sp.y + offY, feetZ };
-					player->SetPosition(w, true);
-					if (auto* cc = player->GetCharController()) {
+					const float feetZ = rower ? Dims().deckZ + 2.0f : Dims().deckZ + 6.0f;
+					const RE::NiPoint3 to{ sp.x, sp.y + offY, feetZ };
+					if (glideOn_ && havePose_) {
+						// v1.8.71: up off the seat and a step to the standing spot over kStandGlide (TendStandGlide), not one frame
+						standFrom_ = lastRot_.Transpose() * (player->GetPosition() - lastAt_);
+						standTo_ = to;
+						standAt_ = rideTime_;
+						standGlide_ = true;
+						player->SetCollision(false);
+						logger::info("Seat: glide out, {:.0f} to the standing spot", (standTo_ - standFrom_).Length());
+					}
+					const RE::NiPoint3 w = RE::NiPoint3{ pos_.x, pos_.y, pos_.z + heave_ } + rot * to;
+					if (!standGlide_) player->SetPosition(w, true);
+					if (auto* cc = standGlide_ ? nullptr : player->GetCharController()) {
 						const float hs = RE::bhkWorld::GetWorldScale();
 						const float hd = yaw_ + (bowFlip_ ? kPi : 0.0f);
 						const RE::hkVector4 v(std::sin(hd) * speed_ * hs, std::cos(hd) * speed_ * hs, 0.0f, 0.0f);
@@ -4399,12 +8081,19 @@ namespace
 					}
 				}
 				logger::info("Seat: release events sent: {}", sent);
-				nudgeTime_ = nudgeOn_ ? 0.0f : -1.0f;  // v0.3.5: the tiny step after standing (see TendNudge)
+				nudgeTime_ = nudgeOn_ && !standGlide_ ? 0.0f : -1.0f;  // v0.3.5: the tiny step after standing (see TendNudge; v1.8.71: after the glide)
 				walkFix_ = 2.0f;  // v1.2.3: the walking flags held for 2 s (OAS PostExitStand), the get-up can set them again
+			}
+			// v1.8.27: up from a sailing boat's helm: the sail is stowed and she glides to a stop
+			if (Kind() != kKindRow && SailEnabled() && (sail_ == 2 || sail_ == 3)) {
+				SetSail(1);
+				logger::info("Sail: stowed (stood up from the helm)");
 			}
 			Print(std::format("RowRim: stood up ({}); the boat slows to a stop", a_why));
 		}
 
+		bool helmF_{ false }, helmB_{ false };  // v1.8.27: W / S held last frame at a sailing boat's helm
+		float helmSteer_{ 0.0f };  // v1.8.31: A / D at the helm: -1 left .. 1 right
 		void HelmSim(float a_dt)
 		{
 			constexpr float kMaxFwd = 220.0f, kMaxBack = 80.0f, kAccel = 90.0f, kBrake = 160.0f, kDrag = 0.6f;
@@ -4416,18 +8105,37 @@ namespace
 				l = inLeft_ || stickX_ < -0.4f;
 				r = inRight_ || stickX_ > 0.4f;
 			}
+			helmSteer_ = (r ? 1.0f : 0.0f) - (l ? 1.0f : 0.0f);  // v1.8.31: for the rudder and tiller
 			// v1.4.0: the stern seat has no oars: sitting there alone does not move the boat (the old test motor is gone)
 			noRowerNote_ -= a_dt;
-			if (seated_ && seatKind_ == SeatKind::kHelm) {
-				if ((f || b || l || r) && noRowerNote_ <= 0.0f) {
+			const bool longCrew = false;  // v1.8.26: no oars on the longship (was: its crew row it from the helm)  // v1.8.8: the longship's crew row (v1.8.9l: oars in under sail, W / S trim)
+			if (seated_ && seatKind_ == SeatKind::kHelm && Kind() == kKindLong) {
+				// v1.8.27: the longship (no oars): W sets the sail, S stows it (as Jump), A / D steer
+				// v1.8.27b: not the sailing boat: there W / S do nothing, only Jump sets and stows the sail
+				if (f && !helmF_) SetSail(2);
+				if (b && !helmB_) SetSail(1);
+			}
+			helmF_ = seated_ && f;
+			helmB_ = seated_ && b;
+			if (seated_ && seatKind_ == SeatKind::kHelm && !longCrew) {
+				// v1.7.74: under sail the tiller steers (A / D); only rowing needs a rower
+				const bool sailing = SailDrawing();
+				if (Kind() == kKindRow && !sailing && (f || b || l || r) && noRowerNote_ <= 0.0f) {  // v1.7.76: no nagging under sail (v1.8.27: the rowboat only)
 					noRowerNote_ = 6.0f;
 					RE::SendHUDMessage::ShowHUDMessage("No rower, move to rower seat or have crew");  // v1.7.54
 				}
-				f = b = l = r = false;
+				f = b = false;
+				if (!sailing) l = r = false;
 			}
-			if (f && !b) speed_ = (std::min)(kMaxFwd, speed_ + (speed_ < 0.0f ? kBrake : kAccel) * a_dt);
-			else if (b && !f) speed_ = (std::max)(-kMaxBack, speed_ - (speed_ > 0.0f ? kBrake : kAccel) * a_dt);
-			else if (seated_) {
+			// v1.8.8: the longship rowed by its crew: up to its own top speed ([Longship] MaxSpeed), slow to gather way
+			const float maxFwd = longCrew ? rowMax_ : kMaxFwd, accel = longCrew ? kAccel * 0.5f : kAccel;
+			if (f && !b) speed_ = (std::min)(maxFwd, speed_ + (speed_ < 0.0f ? kBrake : accel) * a_dt);
+			else if (b && !f) speed_ = (std::max)(-kMaxBack, speed_ - (speed_ > 0.0f ? kBrake : accel) * a_dt);
+			else if (seated_ || SailDrawing()) {  // v1.8.9b: under sail with nobody at the helm too (no stopping)
+				speed_ *= std::exp(-kDrag * a_dt);
+				if (std::abs(speed_) < 2.0f && !SailDrawing()) speed_ = 0.0f;  // v1.7.76: under sail it creeps up from rest
+				if (SailDrawing()) speed_ /= std::exp(-kDrag * a_dt);  // v1.7.78: under sail SailDrive sets the drag
+			} else if (Kind() != kKindRow) {  // v1.8.27: a sailing boat left with its sail stowed glides to a stop
 				speed_ *= std::exp(-kDrag * a_dt);
 				if (std::abs(speed_) < 2.0f) speed_ = 0.0f;
 			} else {
@@ -4436,8 +8144,8 @@ namespace
 			}
 			const float steer = (r ? 1.0f : 0.0f) - (l ? 1.0f : 0.0f);
 			const float grip = 0.35f + 0.65f * (std::min)(1.0f, std::abs(speed_) / 120.0f);  // turns best when moving, a little at rest
-			const float target = steer * kTurnMax * grip * (speed_ < -2.0f ? -1.0f : 1.0f);
-			turn_ += (target - turn_) * (std::min)(1.0f, a_dt * 3.0f);
+			const float target = steer * kTurnMax * grip * turnScale_ * (speed_ < -2.0f ? -1.0f : 1.0f);  // v1.7.97: [Row] Turn too
+			turn_ += (target - turn_) * (1.0f - std::exp(-(3.0f / turnLag_) * a_dt));  // v1.7.97: sluggish ([Row] TurnLag)
 			if (!seated_ && speed_ == 0.0f && std::abs(turn_) < 0.001f) { turn_ = 0.0f; helm_ = false; }
 		}
 
@@ -4468,6 +8176,7 @@ namespace
 			} else {
 				oarPhase_ = 0.0f;  // at rest: the next stroke starts at the catch
 			}
+			// v1.8.86: the stroke glide is back (v1.8.81 had flattened it): the boat gains speed while the blades pull and glides between strokes
 			const float thrust = drive ? kPi * (std::max)(0.0f, std::sin(oarPhase_)) * (std::min)(1.0f, oarAmp_ * 2.0f) : 0.0f;
 			lastThrust_ = thrust;
 			if (throttle > 0.01f) {
@@ -4480,15 +8189,15 @@ namespace
 				if (speed_ > 8.0f) speed_ = (std::max)(0.0f, speed_ - kBrake * (0.4f + 0.6f * s01) * a_dt);
 				else speed_ = (std::max)(-kRevMax, (std::min)(speed_, 0.0f) - kRevAccel * a_dt);  // stopped: back water slowly
 			} else if (speed_ > 0.0f) {
-				speed_ *= std::exp(-rowDrag_ * a_dt);
-				if (speed_ < 1.0f) speed_ = 0.0f;
+				if (!SailDrawing()) speed_ *= std::exp(-rowDrag_ * a_dt);  // v1.7.78: under sail SailDrive sets the drag
+				if (speed_ < 1.0f && !SailDrawing()) speed_ = 0.0f;  // v1.7.76
 			} else {
 				speed_ *= std::exp(-0.9f * a_dt);
 				if (speed_ > -1.0f) speed_ = 0.0f;
 			}
 			const float auth = kTurnFloor + (1.0f - kTurnFloor) * std::clamp(std::abs(speed_) / kTurnAuth, 0.0f, 1.0f);
 			const float maxTurn = (kTurnLow + (kTurnHigh - kTurnLow) * s01) * auth * turnScale_;  // v1.7.8: [Row] Turn
-			turn_ += (steer * maxTurn - turn_) * (1.0f - std::exp(-kTurnResp * a_dt));
+			turn_ += (steer * maxTurn - turn_) * (1.0f - std::exp(-(kTurnResp / turnLag_) * a_dt));  // v1.7.97: sluggish ([Row] TurnLag)
 			if (speed_ > 0.0f) {  // hard turns at speed scrub speed
 				const float load = std::clamp(std::abs(turn_) / kTurnHigh, 0.0f, 1.0f);
 				speed_ *= std::exp(-kTurnDrag * load * load * s01 * a_dt);
@@ -4548,7 +8257,7 @@ namespace
 				}
 				rowPendingFor_ += a_dt;
 				if ((rowRetryWait_ -= a_dt) > 0.0f) return;
-				if (rideTime_ - lastRowStopAt_ < 0.3f || rideTime_ - sitAt_ < 0.3f) return;  // 0.3 s after a stop and after sitting
+				if (sitDeferred_ || rideTime_ - lastRowStopAt_ < 0.3f || rideTime_ - sitAt_ < 0.3f) return;  // 0.3 s after a stop and after sitting (v1.8.71: and the glide)
 				if (!rowEverAccepted_ && rowRejects_ >= 10) return;  // given up this session: rowing without the clip
 				if (npc) Crew::g.rowerRowing = true;  // before the event: the glue must not send the chair sit over the clip
 				if (rower->NotifyAnimationGraph(kRowStartEvent)) {
@@ -4715,7 +8424,7 @@ namespace
 				if (haveWater_) waterZ_ = w;
 			}
 			if (haveWater_) {
-				const float want = waterZ_ + kWaterZ + heightOff_;
+				const float want = waterZ_ + WaterZ() + heightOff_;
 				pos_.z += (want - pos_.z) * (1.0f - std::exp(-2.0f * a_dt));
 			}
 			beached_ = false;
@@ -4724,7 +8433,7 @@ namespace
 			UpdateHullFeel(a_dt, fwd, right);
 			if (std::abs(speed_) < 0.5f) { onBeach_ = false; return; }
 			const float dir = speed_ >= 0.0f ? 1.0f : -1.0f;
-			const float tip = dir > 0.0f ? kFeelLen - 10.0f : kFeelLen - 20.0f;
+			const float tip = dir > 0.0f ? FeelLen() - 10.0f : FeelLen() - 20.0f;
 			const float step = std::abs(speed_) * a_dt;
 			const RE::NiPoint3 tipAt{ pos_.x + fwd.x * dir * (tip + step), pos_.y + fwd.y * dir * (tip + step), pos_.z };
 			float w = 0.0f;
@@ -4771,7 +8480,9 @@ namespace
 		// quarter turns the bow away; sides and stern a fading push away (40, max 60) and 4% speed; the keel a dip, a jolt and
 		// 5% speed. A tall steep terrain face at the waterline is a rock (stop), not a beach.
 		static constexpr int kGN = 7;
-		static constexpr float kFeelLen = 300.0f, kFeelWidth = 85.0f, kFeelKeel = 20.0f;
+		static constexpr float kFeelKeel = 20.0f;
+		float FeelLen() const { return Dims().feelLen; }      // v1.8.8: each boat its own (the rowboat 300 x 85)
+		float FeelWidth() const { return Dims().feelWidth; }
 		static constexpr float kMaxGroundPitch = 0.4363f, kMaxGroundRoll = 0.1745f, kBeachMaxRise = 40.0f, kMaxBankSlope = 0.4663f;
 		static constexpr float kMaxGroundLift = 30.0f, kDryHysteresis = 0.2f, kGroundDryRise = 12.0f, kGroundLiftAllowance = 4.0f;
 		static constexpr float kLandCrawl = 120.0f, kSlideDecel = 300.0f, kBeachMaxSlide = 330.0f, kBeachDragStart = 0.5f, kBeachDrag = 40.0f;
@@ -4900,6 +8611,7 @@ namespace
 
 		void UpdateGround(float a_dt, const RE::NiPoint3& a_fwd, const RE::NiPoint3& a_right)
 		{
+			const float kFeelLen = FeelLen(), kFeelWidth = FeelWidth();  // v1.8.8: this boat's
 			const float tipF = kFeelLen - 10.0f, sternF = -(kFeelLen - 10.0f), side = kFeelWidth - 10.0f;
 			const float hr[kGN] = { 0.0f, 0.0f, 0.0f, side, -side, 0.5f * kFeelWidth, -0.5f * kFeelWidth };
 			const float hf[kGN] = { 0.0f, tipF, sternF, 0.0f, 0.0f, 0.8f * kFeelLen, 0.8f * kFeelLen };
@@ -4909,7 +8621,7 @@ namespace
 			int iceN = 0, dry = 0;
 			RE::NiPoint3 bowPos{};
 			auto* tes = RE::TES::GetSingleton();
-			const float base = pos_.z - kWaterZ - heightOff_;  // the waterline the boat floats at
+			const float base = pos_.z - WaterZ() - heightOff_;  // the waterline the boat floats at
 			if (haveWater_) {
 				for (int i = 0; i < kGN; ++i) {
 					const RE::NiPoint3 pt{ pos_.x + a_right.x * hr[i] + a_fwd.x * hf[i], pos_.y + a_right.y * hr[i] + a_fwd.y * hf[i], pos_.z };
@@ -5078,7 +8790,7 @@ namespace
 			for (int i = 0; i < kFeelers; ++i) {
 				const Feeler& fl = kFeel[i];
 				if (fl.group != kFeelBow && i % 3 != slot) continue;
-				const float r = fl.right * kFeelWidth, f = fl.fwd * kFeelLen;
+				const float r = fl.right * FeelWidth(), f = fl.fwd * FeelLen();
 				bool hit = false, landHit = false;
 				RE::COL_LAYER layer = RE::COL_LAYER::kUnidentified;
 				float frac = 1.0f, dist = 0.0f;
@@ -5247,6 +8959,7 @@ namespace
 		float rockKnock_{ 0.0f };
 		int paint_{ Paint::kBlue };              // OAS default
 		const RE::NiAVObject* paintedRoot_{ nullptr };
+		const RE::NiAVObject* drawnRoot_{ nullptr };  // v1.8.56: the model AlwaysDraw last flagged
 		int paintedAs_{ -1 };
 
 		// ---- v0.8.0: the boat's own motion (OAS BoatBow Update / UpdateParked) ----
@@ -5264,12 +8977,30 @@ namespace
 				const float u = std::clamp((a_x - a_lo) / (a_hi - a_lo), 0.0f, 1.0f);
 				return u * u * (3.0f - 2.0f * u);
 			};
-			const float r = idleBob_ * (1.0f - 0.35f * smooth(0.0f, 0.6f, s01)) * (onLand_ ? 0.0f : 1.0f) * (1.0f - smooth(0.0f, 8.0f, groundLift_));  // v1.4.0: grounded, no bob
-			const float idleRoll = r * 0.019f * (0.68f * std::sin(t * 1.19f) + 0.32f * std::sin(t * 2.31f + 0.9f));
-			const float idlePitch = r * 0.010f * (0.64f * std::sin(t * 1.67f + 1.7f) + 0.36f * std::sin(t * 0.83f + 0.4f));
-			const float idleHeave = r * 2.4f * (0.7f * std::sin(t * 1.43f + 0.3f) + 0.3f * std::sin(t * 2.7f + 2.1f));
+			// v1.8.27d: the sailing boats rock their own amount ([Sail] Rock), more in a wind under sail and not less for going
+			// fast; they heel their own amount too ([Sail] Heel)
+			float rockK = 1.0f, heelK = 1.0f, windK = 1.0f;
+			const bool sails = Kind() != kKindRow && SailEnabled();
+			if (sails) {
+				LoadSailTuning();
+				rockK = sailRock_;
+				heelK = sailHeelK_;
+				if (SailDrawing()) {
+					float phi = 0.0f, str = 0.0f;
+					SailWind(phi, str);
+					windK = 1.0f + 1.5f * std::clamp(str, 0.0f, 1.0f);
+				}
+			}
+			const float slowK = sails ? 1.0f : 1.0f - 0.35f * smooth(0.0f, 0.6f, s01);
+			const float r = idleBob_ * slowK * (onLand_ ? 0.0f : 1.0f) * (1.0f - smooth(0.0f, 8.0f, groundLift_));  // v1.4.0: grounded, no bob
+			const float rk = Dims().rock;  // v1.8.8b: a big boat rocks less (its stern swung the helm and its prompt about)
+			const float sw = rockK * windK;
+			const float idleRoll = sw * rk * r * 0.019f * (0.68f * std::sin(t * 1.19f) + 0.32f * std::sin(t * 2.31f + 0.9f));
+			const float idlePitch = sw * rk * r * 0.010f * (0.64f * std::sin(t * 1.67f + 1.7f) + 0.36f * std::sin(t * 0.83f + 0.4f));
+			const float idleHeave = (sails ? 0.5f + 0.5f * sw : 1.0f) * r * 2.4f * (0.7f * std::sin(t * 1.43f + 0.3f) + 0.3f * std::sin(t * 2.7f + 2.1f));
 			// turn lean (the boat's turn rate: + right)
-			const float leanTarget = std::clamp(turn_ * 0.35f * s01, -0.25f, 0.25f);
+			// v1.8.9j: plus the heel under sail (to leeward)
+			const float leanTarget = std::clamp(turn_ * 0.35f * s01, -0.25f, 0.25f) * (0.4f + 0.6f * Dims().rock) + sailHeel_ * heelK * (0.4f + 0.6f * Dims().rock);  // v1.8.27d: times [Sail] Heel
 			leanRoll_ += (leanTarget - leanRoll_) * (1.0f - std::exp(-6.0f * a_dt));
 			// stroke squat
 			const float squatTarget = onLand_ ? 0.0f : 0.012f * (lastThrust_ / kPi);
@@ -5286,7 +9017,7 @@ namespace
 			if (player && !seated_) {
 				d = PlayerLocal(player);
 				auto* st = player->AsActorState();
-				on = std::abs(d.x) < kWeightHalfWide && std::abs(d.y) < kWeightHalfLen && d.z > -60.0f && d.z < 160.0f && !(st && st->IsSwimming());
+				on = std::abs(d.x) < Dims().weightHalfWide && std::abs(d.y) < Dims().weightHalfLen && d.z > -60.0f && d.z < 160.0f && !(st && st->IsSwimming());
 			}
 			if ((landCheck_ -= a_dt) <= 0.0f) {
 				landCheck_ = 1.0f;
@@ -5294,9 +9025,9 @@ namespace
 				onLand_ = !(WaterAt(pos_, wz) && wz > pos_.z - 60.0f);
 			}
 			const float amt = onLand_ ? 0.33f : 1.0f;
-			const float wRoll = on ? amt * 0.10f * std::clamp(d.x / kWeightHalfWide, -1.0f, 1.0f) : 0.0f;
-			const float wPitch = on ? -amt * 0.015f * std::clamp(d.y / kWeightHalfLen, -1.0f, 1.0f) : 0.0f;  // v1.4.0: a third (was 0.045)
-			const float wSink = on && !onLand_ ? 1.5f : 0.0f;
+			const float wRoll = on ? rk * amt * 0.10f * std::clamp(d.x / Dims().weightHalfWide, -1.0f, 1.0f) : 0.0f;
+			const float wPitch = on ? -rk * amt * 0.015f * std::clamp(d.y / Dims().weightHalfLen, -1.0f, 1.0f) : 0.0f;  // v1.4.0: a third (was 0.045)
+			const float wSink = on && !onLand_ ? 1.5f * rk : 0.0f;
 			const float k = 1.0f - std::exp(-(on ? 3.0f : 1.8f) * a_dt);  // settles in under a second, rises back slower
 			weightRoll_ += (wRoll - weightRoll_) * k;
 			weightPitch_ += (wPitch - weightPitch_) * k;
@@ -5318,7 +9049,7 @@ namespace
 			const RE::NiPoint3 w = a_at + a_rot * SeatPos();
 			player->SetPosition(w, true);
 			Crew::Glue(CrewPose(a_at, a_rot), a_dt);  // v1.6.0: the passengers held on their seats
-			if (drawMode_ == 1 || drawMode_ == 2) player->Update3DPosition(true);  // v0.8.3 test path; OAS (draw prev) and the pin leave the 3D to the engine
+			if (DrawModeNow() == 1 || DrawModeNow() == 2) player->Update3DPosition(true);  // v0.8.3 test path; OAS (draw prev) and the pin leave the 3D to the engine
 			(void)a_dYaw;
 			// v1.2.0: OAS ApplyPlayerBody. The body is carried by position, so its graph thinks it walks while W is held: the
 			// movement inputs held at zero. Third person: the body faces along its seat every frame and the graph may not turn
@@ -5330,7 +9061,7 @@ namespace
 			auto* cam = RE::PlayerCamera::GetSingleton();
 			const bool firstPerson = cam && cam->IsInFirstPerson();
 			if (!firstPerson && camWasFirst_ && seatKind_ == SeatKind::kRower) facePending_ = true;  // OAS 56.45: into third person at the oars
-			if (firstPerson && !camWasFirst_) player->data.angle.z = SeatFacing();  // OAS: first person starts looking the seat's way
+			if (firstPerson && !camWasFirst_) player->data.angle.z = SeatFacingNow();  // OAS: first person starts looking the seat's way
 			camWasFirst_ = firstPerson;
 			MaskSitForFreeLook(player, firstPerson);
 			if (firstPerson) {
@@ -5338,10 +9069,28 @@ namespace
 			} else {
 				player->SetGraphVariableBool("bAllowRotation", false);
 				player->data.angle.x = 0.0f;
-				player->data.angle.z = SeatFacing();
+				player->data.angle.z = SeatFacingNow();
 			}
 			if (auto* cc = player->GetCharController()) cc->SetLinearVelocityImpl(RE::hkVector4());
-			if (rowAnimOn_ || resitPending_ || fpSitMasked_) return;  // the row clip replaces the sit pose; a masked sit is still a sit
+			// v1.8.71: the glide done: on the seat, sit now (the helm and row clips wait 0.4 / 0.3 s from here)
+			if (gliding_ && rideTime_ - glideAt_ >= kSitGlide) {
+				gliding_ = false;
+				glideOff_ = {};
+				glideYaw_ = 0.0f;
+				spikeHave_ = false;
+			}
+			if (sitDeferred_ && !gliding_) {
+				sitDeferred_ = false;
+				sitAt_ = rideTime_;
+				sitTimer_ = 0.0f;
+				TrySitAnim(player);
+				logger::info("Seat: glide in done, seated");
+			}
+			CalmSeated();                    // v1.8.65
+			HoldMoveInput();                 // v1.8.72
+			TendGraphWatch(a_dt, player);    // v1.8.65
+			TendHelmAnim(a_dt, player);  // v1.8.40
+			if (rowAnimOn_ || helmAnimOn_ || resitPending_ || fpSitMasked_) return;  // the row (or helm) clip replaces the sit pose; a masked sit is still a sit
 			// the sit can be dropped (or refused at first): try again a few times
 			sitTimer_ += a_dt;
 			if (sitTimer_ > 0.5f && sitTries_ < 4) {
@@ -5391,52 +9140,9 @@ namespace
 		}
 
 	public:
-		// From ThirdPersonState::Update, after the game's: the orbit turned to face the rower once (boarding the oars, or
-		// first -> third person at the oars), then only moved by real look input (mouse / right stick); a game reset or swing
-		// is undone (the game kept swinging the orbit behind the seated actor: the spinning camera OAS fixed in 56.57).
-		void CamTend(RE::ThirdPersonState* a_tps)
-		{
-			if (!a_tps) return;
-			if (!seated_) { orbitHave_ = false; facePending_ = false; return; }
-			if (facePending_) {
-				facePending_ = false;
-				a_tps->freeRotationEnabled = true;
-				a_tps->freeRotation.x = kPi;
-				orbitX_ = kPi;
-				orbitHave_ = true;
-				logger::info("Camera: third person turned to face the rower (W rows away from the camera)");
-				return;
-			}
-			auto* pc = RE::PlayerControls::GetSingleton();
-			const bool look = pc && (std::fabs(pc->data.lookInputVec.x) > 1.0e-4f || std::fabs(pc->data.lookInputVec.y) > 1.0e-4f);
-			++orbitFrames_;
-			if (look) ++orbitLookFrames_;
-			if (orbitHave_ && !look) {
-				if (!a_tps->freeRotationEnabled) {
-					a_tps->freeRotationEnabled = true;
-					a_tps->freeRotation.x = orbitX_;
-					if (orbitFixLogs_++ < 6) logger::info("Camera: the game switched the orbit off aboard ({:.3f}), put back", orbitX_);
-				} else {
-					// v1.7.12: the difference as an angle (-pi..pi): a camera mod that wraps the orbit is not "a swing" of
-					// hundreds of radians, and only the game's real swing is taken back off
-					const float d = std::remainder(a_tps->freeRotation.x - orbitX_, 2.0f * kPi);
-					if (std::fabs(d) > 1.0e-5f) {
-						orbitUndone_ += std::fabs(d);
-						a_tps->freeRotation.x -= d;
-					}
-				}
-			}
-			if (a_tps->freeRotationEnabled) {
-				orbitX_ = a_tps->freeRotation.x;
-				orbitHave_ = true;
-			}
-			if (orbitFrames_ >= 120) {
-				if (orbitUndone_ > 0.001f || orbitLookFrames_ > 0)
-					logger::info("Camera: orbit aboard {:.3f}, game swing undone {:.3f} rad, look input on {} of {} frames", orbitX_, orbitUndone_, orbitLookFrames_, orbitFrames_);
-				orbitUndone_ = 0.0f;
-				orbitLookFrames_ = orbitFrames_ = 0;
-			}
-		}
+		int orbitPreLogs_{ 0 };
+		float lastFreeX_{ 0.0f };  // v1.8.70
+		int spinLogs_{ 0 };
 
 	private:
 		bool seated_{ false };
@@ -5452,8 +9158,10 @@ namespace
 		bool carrierAI_{ false };
 		bool lateOn_{ true };
 		bool aiApplied_{ true };
-		bool carrierChecked_{ false }, carrierSwapped_{ false };  // v1.7.71: the carrier's base logged / replaced once a load
+		bool carrierChecked_{ false }, carrierSwapped_{ false };
+		float carrierLost_{ 0.0f };  // v1.7.80: seconds the carrier has had no 3D / a detached cell  // v1.7.71: the carrier's base logged / replaced once a load
 		bool nudgeOn_{ true };
+		bool glideOn_{ true };  // v1.8.71: rr "glide off" snaps on and off the seat as before
 		std::string wbMode_{};  // v0.5.0: off (the raised floor does the job); rr "wb a" still works with the v0.4.1 mesh
 		RE::NiAVObject* wbA_[10]{};
 		RE::NiAVObject* wbD_[10]{};
@@ -5492,7 +9200,7 @@ namespace
 		RE::ObjectRefHandle lampLight_;
 		RE::ActorHandle rowAnimActor_;  // v1.7.9: who the row clip was started on (the player or the crew rower)
 		LampSwing lamp_st_{};
-		bool lampOn_{ true };
+		bool lampOn_{ true };  // v1.8.0: on again for the rowboat (the sailing boat puts it out: ApplyModelGeometry)
 		float lampCellTimer_{ 0.0f };
 		int hiddenKids_{ 0 };
 		float hideTimer_{ 0.0f };
@@ -5540,6 +9248,7 @@ namespace
 		float rowDrag_{ 0.07f };
 		float turnScale_{ 1.0f };  // v1.7.8: [Row] Turn
 		bool rowLoaded_{ false };
+		float turnLag_{ 2.5f };  // v1.7.97
 		// oars
 		RE::NiPointer<RE::NiNode> oars_[2];          // 0 right, 1 left
 		RE::NiTransform clipLocal_[2]{};             // the clip's pose, boat frame (held for the blend back)
@@ -5572,7 +9281,7 @@ namespace
 			if (diagFrames_ > 0) diagBoat_.Add(step);
 			if (++diagFrames_ >= 60) {
 				logger::info("View: over {} frames vs the drawn boat: rower root {} | camera {} | Cam3rd bone {} | boat step per frame {} | pin moved the rower on {} frames, max {:.1f} (draw mode {})",
-					diagFrames_, diagRower_.Text(), diagCam_.Text(), diagCam3_.Text(), diagBoat_.Text(), pinMoved_, pinMax_, drawMode_);
+					diagFrames_, diagRower_.Text(), diagCam_.Text(), diagCam3_.Text(), diagBoat_.Text(), pinMoved_, pinMax_, DrawModeNow());
 				pinMoved_ = 0;
 				pinMax_ = 0.0f;
 				diagRower_ = Range{};
@@ -5583,7 +9292,13 @@ namespace
 			}
 		}
 		float drawLead_{ 0.7f };  // v1.6.6
-		int drawMode_{ 0 };  // seated: 0 one frame behind (OAS, the default again since v1.6.1), 1 this frame's glue pose, 2 from the drawn player, 3 pinned (v1.2.3)
+		// v1.8.81: the rowboat is drawn pinned (mode 3: the boat at this frame's pose, the rower pinned to the seat) unless a mode
+		// is chosen with oas "draw ..." (the row clip moves the rower's root 5-17 units off the drawn boat every stroke; "oas go 250"
+		// without the clip runs smooth). Uncertain: see the soft rules in RULES.md
+		int DrawModeNow() const { LoadDrawSel(); return drawSel_ == 0 ? (kind_ == kKindRow ? 3 : 0) : drawSel_ - 1; }
+		mutable int drawSel_{ 0 };
+		mutable bool drawLoaded_{ false };
+		int drawModeUnused_{ 0 };  // seated: 0 one frame behind (OAS, the default again since v1.6.1), 1 this frame's glue pose, 2 from the drawn player, 3 pinned (v1.2.3)
 		RE::NiPoint3 prevAt_{};
 		RE::NiMatrix3 prevRot_{};
 		bool havePrev_{ false };
@@ -5619,16 +9334,17 @@ namespace
 		float weightRoll_{ 0.0f }, weightPitch_{ 0.0f }, weightSink_{ 0.0f };
 		bool weightOn_{ false }, onLand_{ false };
 		float landCheck_{ 0.0f };
-		static constexpr float kWeightHalfLen = 230.0f, kWeightHalfWide = 85.0f;  // OAS footprint about the hull centre
+		// (v1.8.8: the footprint where standing people tip the boat is each boat's own: Dims().weightHalfLen / weightHalfWide)
 		bool handLock_{ true };
 		int oarLogs_{ 0 };
 		float oarRoll_{ 90.0f * kPi / 180.0f };          // OAS BakedOarRoll default
+		RE::NiPoint3 aftLock_{ 88.3f, -95.0f, 77.9f };  // v1.7.94: per model (kAftLock on the rowboat)
 		RE::NiPoint3 lockLocal_{ 93.3f, 6.7f, 76.5f };  // v1.2.6: the middle oarlock forks where the row clip's oar shafts cross the gunwale (shaft centre; the cradle is 1.5 under it)
 
 
 		RE::FormID refId_{ 0 };
 		RE::FormID watchId_{ 0 };
-		RE::bhkRigidBody* body_{ nullptr };
+		RE::NiPointer<RE::bhkRigidBody> body_;  // v1.8.49: held (was a bare pointer: freed under us on a coc)
 		bool needInit_{ false };
 		int initTries_{ 0 };
 		Mode mode_{ Mode::kDrive };
@@ -5644,6 +9360,9 @@ namespace
 		float ampRoll_{ 0.0f }, ampPitch_{ 0.0f }, ampHeave_{ 0.0f };
 		float period_{ 4.0f };
 		float roll_{ 0.0f }, pitch_{ 0.0f }, heave_{ 0.0f };
+		float seaHeave_{ 0.0f }, seaPitch_{ 0.0f }, seaRoll_{ 0.0f };  // v1.8.10
+		SeaLink::State seaState_;  // v1.8.11
+		float bowImm_ = 0.0f, bowCool_ = 0.0f;  // v1.8.15: how deep the bow is in the wave, and the splash's wait
 		RE::NiPoint3 posOff_{};
 		Quat rotOff_{};
 		float lastErr_{ 0.0f };
@@ -5675,6 +9394,12 @@ namespace
 				if (auto* btn = e->AsButtonEvent()) {
 					const bool keyboard = btn->device == RE::INPUT_DEVICE::kKeyboard;
 					const bool gamepad = btn->device == RE::INPUT_DEVICE::kGamepad;
+					if (btn->device == RE::INPUT_DEVICE::kMouse && hull.HelmCamActive() && !blocked && btn->IsDown()) {  // v1.8.79: wheel zoom
+						const auto wid = btn->GetIDCode();
+						if (wid == RE::BSWin32MouseDevice::Key::kWheelUp) TestHull::g_wheel = TestHull::g_wheel.load() + 1.0f;
+						else if (wid == RE::BSWin32MouseDevice::Key::kWheelDown) TestHull::g_wheel = TestHull::g_wheel.load() - 1.0f;
+						continue;
+					}
 					if (!keyboard && !gamepad) continue;
 					const std::uint32_t id = btn->GetIDCode();
 					const bool down = btn->IsPressed();
@@ -5685,6 +9410,8 @@ namespace
 						return keyboard && id == a_key;
 					};
 					if (keyboard && !blocked) {
+						if (btn->IsDown()) hull.OnSeatSwitch(id);  // v1.8.29c: R switches seats
+						if (btn->IsDown() && hull.HelmCamActive() && id == static_cast<std::uint32_t>(HelmCamSet::Get().cineKey)) HelmCamSet::ToggleCine();  // v1.8.59
 						Crew::NumKey(id, btn->IsPressed(), btn->IsDown());  // v1.6.0: oas num
 						Gear::NumKey(id, btn->IsPressed(), btn->IsDown());  // v1.7.11: oas "num gear"
 						Wake::NumKey(id, btn->IsPressed());                 // v1.7.43: oas "num stern"
@@ -5708,8 +9435,25 @@ namespace
 					// v1.7.62: Auto-Move toggles auto-row while seated
 					const bool autoKey = (!user.empty() && ue->autoMove.c_str() && user == ue->autoMove.c_str()) || Pad::IsAutoMove(btn->device.get(), id);
 					if (autoKey && btn->IsDown() && !blocked) hull.OnAutoRow();
+					// v1.7.74: Jump while seated sets the sail (furled, full, reefed)
+					const bool jumpKey = (!user.empty() && ue->jump.c_str() && user == ue->jump.c_str()) || Pad::IsMappedTo(ue->jump, btn->device.get(), id);
+					if (jumpKey && btn->IsDown() && !blocked) {
+						if (hull.AnchorKeys()) hull.OnAnchorKey();  // v1.8.29: the sailing boat: Jump drops and raises the anchor
+						else hull.OnSailKey();
+						hull.OnJumpKey();  // v1.8.9b: and a jump aboard goes with the boat
+					}
+					// v1.8.29: the sailing boat: Sprint sets, reefs and stows the sail
+					const bool sprintKey = (!user.empty() && ue->sprint.c_str() && user == ue->sprint.c_str()) || Pad::IsMappedTo(ue->sprint, btn->device.get(), id);
+					if (sprintKey && btn->IsDown() && !blocked && hull.AnchorKeys()) hull.OnSailKey();
 					const bool act = is(ue->activate, 0x12) || (gamepad && Pad::IsActivate(id));
 					if (act && btn->IsDown() && !blocked) hull.OnActivate();
+				} else if (e->GetEventType() == RE::INPUT_EVENT_TYPE::kMouseMove) {
+					TestHull::g_mouseSeen = true;  // v1.8.79: the helm camera looks round with the raw mouse
+					if (hull.HelmCamActive() && !blocked) {
+						auto* m = static_cast<RE::MouseMoveEvent*>(e);
+						TestHull::g_mx = TestHull::g_mx.load() + static_cast<float>(m->mouseInputX);
+						TestHull::g_my = TestHull::g_my.load() + static_cast<float>(m->mouseInputY);
+					}
 				} else if (e->GetEventType() == RE::INPUT_EVENT_TYPE::kThumbstick) {
 					auto* t = static_cast<RE::ThumbstickEvent*>(e);
 					if (t->IsLeft()) {
@@ -5719,6 +9463,8 @@ namespace
 						hull.OnStick(blocked || zoom ? 0.0f : t->xValue, blocked || zoom ? 0.0f : t->yValue);
 					} else {
 						Pad::g_rightY = t->yValue;
+						TestHull::g_rx = blocked ? 0.0f : t->xValue;  // v1.8.79: the helm camera's look
+						TestHull::g_ry = blocked ? 0.0f : t->yValue;
 					}
 				}
 			}
@@ -5732,12 +9478,16 @@ namespace
 	{
 		static void Thunk(RE::FirstPersonState* a_this, RE::BSTSmartPointer<RE::TESCameraState>& a_nextState)
 		{
+			TestHull::Get().BodyUntilt();  // v1.8.54
 			Stage("first person camera: PinRower");
 			TestHull::Get().PinRower();  // v1.2.3
 			Stage("first person camera: game's original Update");
 			func(a_this, a_nextState);
 			Stage("first person camera: LatePlace");
 			TestHull::Get().LatePlace("first person camera update");
+			TestHull::Get().BodyTilt();    // v1.8.46: the seated body with the boat's roll and pitch
+			TestHull::Get().TillerHelm();  // v1.8.43
+			TestHull::SeatMarkersAll();    // v1.8.51
 			Stage("first person camera: lake boats");
 			LakeBoats::LatePlace();  // v1.3.1
 			Stage("first person camera: fog");
@@ -5757,32 +9507,26 @@ namespace
 	{
 		static void Thunk(RE::ThirdPersonState* a_this, RE::BSTSmartPointer<RE::TESCameraState>& a_nextState)
 		{
-			Stage("third person camera: CamFrame");
-			TestHull::Get().CamFrame();  // v1.7.17
-			Stage("third person camera: ResetAnimRotation before Update");
-			TestHull::Get().ResetAnimRotation(a_this);
+			TestHull::Get().BodyUntilt();  // v1.8.54: the camera is built from him upright (the tilt is drawn only)
+			TestHull::Get().CamFrame();    // v1.7.17
+			TestHull::TendZoom(a_this);    // v1.8.55: further zoom out while on a boat
+			TestHull::CutAnimCam(a_this, "before");  // v1.8.78
 			Stage("third person camera: PinRower");
 			TestHull::Get().PinRower();  // v1.2.3: before the game places the camera from his bones
-			Stage("third person camera: MotionCamPre");
-			TestHull::Get().MotionCamPre(a_this);   // v1.7.13
-			Stage("third person camera: SeatGuard");
-			TestHull::Get().SeatGuard(a_this);      // v1.7.18: before the game's camera update (it follows his 3D)
 			Stage("third person camera: game's original Update");
-			func(a_this, a_nextState);
-			Stage("third person camera: MotionCamGame");
-			TestHull::Get().MotionCamGame(a_this);  // v1.7.13
-			Stage("third person camera: ResetAnimRotation after Update");
-			TestHull::Get().ResetAnimRotation(a_this);  // OAS CamAfterStateUpdate: before and after the game's
-			Stage("third person camera: CamTend");
-			TestHull::Get().CamTend(a_this);            // v1.2.0
+			func(a_this, a_nextState);  // v1.8.77: the game's camera, as it is
+			TestHull::CutAnimCam(a_this, "after");  // v1.8.78
 			Stage("third person camera: LatePlace");
 			TestHull::Get().LatePlace("third person camera update");  // v1.1.1
+			TestHull::Get().RootSpikeGuard();  // v1.8.57d
+			TestHull::Get().BodyTilt();    // v1.8.46
+			TestHull::Get().TillerHelm();  // v1.8.43
+			TestHull::Get().HelmCamTick(a_this);  // v1.8.58: the helm camera, ours
+			TestHull::SeatMarkersAll();    // v1.8.51
 			Stage("third person camera: lake boats");
 			LakeBoats::LatePlace();  // v1.3.1
-			Stage("third person camera: MotionB");
-			TestHull::Get().MotionB(a_this);  // v1.7.13: motion log line
 			Stage("third person camera: fog");
-			Underwater::FogTend();   // v1.5.15: the underwater fog again, right before drawing
+			Underwater::FogTend();   // v1.5.15
 			Stage("after the camera update (the game draws)");
 		}
 		static inline REL::Relocation<decltype(Thunk)> func;
@@ -5799,7 +9543,8 @@ namespace
 		static void Thunk(RE::ThirdPersonState* a_this, RE::NiPoint3& a_translation)
 		{
 			func(a_this, a_translation);
-			TestHull::Get().CamOut(a_this, a_translation);
+			// v1.8.58: installed now for the helm camera only (CamOut, the old seat guard, was never hooked: left out)
+			TestHull::Get().HelmCamPos(a_translation);  // v1.8.58
 		}
 		static inline REL::Relocation<decltype(Thunk)> func;
 		static void Install()
@@ -5808,6 +9553,23 @@ namespace
 			func = vtbl.write_vfunc(REL::Module::IsVR() ? 6 : 5, Thunk);
 		}
 	};
+
+	// v1.8.58: the third person camera's turn: ours at the helm
+	struct ThirdPersonStateRotationHook
+	{
+		static void Thunk(RE::ThirdPersonState* a_this, RE::NiQuaternion& a_rotation)
+		{
+			func(a_this, a_rotation);
+			TestHull::Get().HelmCamRot(a_rotation);
+		}
+		static inline REL::Relocation<decltype(Thunk)> func;
+		static void Install()
+		{
+			REL::Relocation<std::uintptr_t> vtbl{ RE::VTABLE_ThirdPersonState[0] };
+			func = vtbl.write_vfunc(REL::Module::IsVR() ? 5 : 4, Thunk);
+		}
+	};
+
 
 	// Horse idle/breath sounds may be dispatched as footstep animation tags,
 	// notably with USSEP's horse behavior fixes (AFKTrack #29343 / #34655).
@@ -5818,7 +9580,7 @@ namespace
 		static RE::BSEventNotifyControl Thunk(RE::BGSImpactManager* a_this,
 			const RE::BGSFootstepEvent* a_event, RE::BSTEventSource<RE::BGSFootstepEvent>* a_source)
 		{
-			if (a_event && CarrierAudio::id.load(std::memory_order_relaxed)) {
+			if (a_event && CarrierAudio::Any()) {
 				auto actor = a_event->actor.get();
 				if (CarrierAudio::IsCarrier(actor.get())) {
 					if (CarrierAudio::footstepsLogged.fetch_add(1, std::memory_order_relaxed) < 24)
@@ -5870,8 +9632,7 @@ namespace
 	{
 		static bool IsCarrier(const RE::TESObjectREFR* a_ref)
 		{
-			const RE::FormID id = TestHull::Get().CarrierId();
-			return a_ref && id && a_ref->GetFormID() == id;
+			return a_ref && TestHull::IsAnyCarrier(a_ref->GetFormID());  // v1.8.26: any of the three boats' carriers
 		}
 		static bool PickedCarrier()
 		{
@@ -5912,50 +9673,17 @@ namespace
 		// v1.7.12: the bedroll spot reads "Unroll Bedroll" or, with the bedroll laid out, "Pack Up Bedroll" (ACTI vtable 4C)
 		static bool Text(RE::TESObjectACTI* a_this, RE::TESObjectREFR* a_ref, RE::BSString& a_dst)
 		{
-			const auto fishing = BoatFishing::Read();
-			if (BoatFishing::IsBoatReel(a_ref, fishing)) {
-				if (BoatFishing::CanReel(fishing)) return text(a_this, a_ref, a_dst);
-				if (!TestHull::Get().CanStartBoatFishing()) { a_dst = ""; return false; }
-				a_dst = "Fish\nFishing Supplies";
-				return true;
-			}
 			const int kind = TestHull::Get().PickKindOf(a_ref);
 			if (kind == TestHull::kPickBedroll) {
 				a_dst = Gear::BedrollOut() ? "Pack Up\nBedroll" : "Unroll\nBedroll";
 				return true;
 			}
-			if (kind == TestHull::kPickSupplies) {
-				if (!TestHull::Get().CanStartBoatFishing()) { a_dst = ""; return false; }
-				a_dst = "Fish\nFishing Supplies"; return true;
-			}
-			if (Gear::IsSupplies(a_ref)) {  // v1.7.30: the supplies themselves: the same prompt, only close and standing
-				if (!TestHull::Get().CanStartBoatFishing()) { a_dst = ""; return false; }
-				a_dst = "Fish\nFishing Supplies";
-				return true;
-			}
+			if (kind == TestHull::kPickSail) { a_dst = TestHull::Get().SailPrompt(); return true; }  // v1.7.73
 			return text(a_this, a_ref, a_dst);
 		}
 		static inline REL::Relocation<decltype(Text)> text;
 		static bool Activate(RE::TESObjectACTI* a_this, RE::TESObjectREFR* a_target, RE::TESObjectREFR* a_activator, std::uint8_t a_arg3, RE::TESBoundObject* a_object, std::int32_t a_count)
 		{
-			if (a_activator && a_activator == RE::PlayerCharacter::GetSingleton()) {
-				const auto fishing = BoatFishing::Read();
-				if (BoatFishing::IsBoatReel(a_target, fishing)) {
-					if (BoatFishing::CanReel(fishing)) return act(a_this, a_target, a_activator, a_arg3, a_object, a_count);
-					// CC normally restarts from its oversized invisible ReelLineRef
-					// while idle. Route it through our look-down and idle checks.
-					if (TestHull::Get().CanStartBoatFishing()) TestHull::Get().OnPick(TestHull::kPickSupplies);
-					return true;
-				}
-			}
-			if (a_activator && a_activator == RE::PlayerCharacter::GetSingleton()) Gear::OnUsed(a_target);  // v1.7.22
-			// v1.7.30: E straight on the supplies (the crosshair on them, not on their prompt) started the fishing with no
-			// marker: turned to the floor, no cast, stuck. It goes our way (marker, open water check) or nowhere.
-			if (Gear::IsSupplies(a_target) && !Gear::g_ourUse && a_activator && a_activator == RE::PlayerCharacter::GetSingleton()) {
-				if (TestHull::Get().NearSupplies()) TestHull::Get().OnPick(TestHull::kPickSupplies);
-				else logger::info("Gear: the supplies used from too far or seated: refused");
-				return true;
-			}
 			const int kind = TestHull::Get().PickKindOf(a_target);
 			if (kind >= 0) {
 				if (a_activator && a_activator == RE::PlayerCharacter::GetSingleton()) TestHull::Get().OnPick(kind);
@@ -5978,11 +9706,6 @@ namespace
 		static MenuSink* Get() { static MenuSink s; return &s; }
 		RE::BSEventNotifyControl ProcessEvent(const RE::MenuOpenCloseEvent* a_e, RE::BSTEventSource<RE::MenuOpenCloseEvent>*) override
 		{
-			if (a_e && a_e->opening &&
-				(a_e->menuName == RE::StatsMenu::MENU_NAME || a_e->menuName == RE::LevelUpMenu::MENU_NAME)) {
-				const auto fishing = BoatFishing::Read();
-				if (fishing.ours && fishing.state > 0) BoatFishing::quitAfterMenu = true;
-			}
 			if (a_e && a_e->opening && a_e->menuName == RE::MapMenu::MENU_NAME) {
 				SKSE::GetTaskInterface()->AddTask([]() { TestHull::Get().StandFor("the map opened"); });
 			}
@@ -5995,16 +9718,15 @@ namespace
 		static void Thunk(RE::PlayerCharacter* a_this, float a_delta)
 		{
 			Stage("game player update");
+			TestHull::Get().BodyUntilt();  // v1.8.54: the game's frame sees him upright
+			TestHull::Get().CalmSeated();  // v1.8.65: the body's movement values at rest before the game's update too
+			TestHull::Get().HoldMoveInput();  // v1.8.72: movement stays on seated (the compass), the walk held here
+			TestHull::Get().GuardCameraTarget();  // v1.8.74
 			func(a_this, a_delta);
+			TestHull::Get().GuardCameraTarget();  // v1.8.74: and after the game's update
 			g_beat.fetch_add(1, std::memory_order_relaxed);
-			if (std::isfinite(a_delta) && a_delta > 0.0f)
-				BoatFishing::startHold = (std::max)(0.0f, BoatFishing::startHold - a_delta);
-			Stage("boat fishing: exit after level-up menu");
-			BoatFishing::TendMenuExit();
-			Stage("boat fishing: finish catch session");
-			BoatFishing::TendFinishedAttempt();
 			Stage("TestHull::Update");
-			TestHull::Get().Update(a_delta);
+			TestHull::TickAll(a_delta);  // v1.8.26: every boat out
 			Stage("LakeBoats::Update");
 			LakeBoats::Update(a_delta);  // v1.3.0
 			{
@@ -6014,7 +9736,7 @@ namespace
 				Crew::Tick(a_delta, hb, at);  // v1.6.0: summons, letting go after a load, the numpad
 			}
 			Stage("Underwater::Tend");
-			Underwater::Tend(a_delta);   // v1.5.14: our own underwater look for the camera
+			Underwater::Tend(a_delta, TestHull::Get().OnBoat());   // v1.5.14: our own underwater look for the camera (v1.8.0: on the boat only)
 			CellGrid::Tick();            // v1.7.20
 			Crew::LingerSafety();        // v1.7.28
 			Stage("after the player update (the game's own frame)");
@@ -6032,10 +9754,10 @@ namespace
 	// ------------------------------------------------------------------
 	// v1.7.8: the player commands first (oas help), the test / tuning ones after (oas dev)
 	constexpr const char* kHelpPlayer =
-		"oas boat (a boat ahead of you) | unboat (remove it) | bring (under you) | sit (or E) | paint<blue|beige|black|red|white|bluedesign|vanilla> | "
+		"oas boat (a boat ahead of you) | \"boat row|sail\" (that boat instead, each with its own settings) | unboat (remove it) | bring (under you) | sit (or E) | paint<blue|beige|black|red|white|bluedesign|vanilla> | "
 		"\"height N\" | \"row speed 300\" | \"row drag 0.07\" | \"row turn 0.45\" | \"dock add <name>|del|list|on|off|reload\" | "
 		"\"lakeboats on|off|0-10\" | \"crew add|remove|clear|list|summon\" | num (crew seat numpad) | \"plankton on|off|night|auto\" | "
-		"\"underwater on|off\" | \"lamp on|off\" | \"num gear\" (place the bedroll / fishing supplies) | \"bedroll roll|unroll\" | status | \"reset settings\" | dev (test commands). Look at the hull / stern seat / middle thwart for [E] Board / Steer / Row. Full sheet: TUNE_SHEET.txt";
+		"menu (settings: SKSE Menu Framework, Oars and Sails) | \"underwater on|off\" | \"lamp on|off\" | \"num gear\" (place the bedroll) | \"bedroll roll|unroll\" | status | \"reset settings\" | dev (test commands). Look at the hull / stern seat / middle thwart for [E] Board / Steer / Row. Full sheet: TUNE_SHEET.txt";
 	constexpr const char* kHelp =
 		"oas spawn | bring | delete | info | sit (or E: the nearer of the oars / helm) | \"rowseat here|x y z\" | \"seat here|x y z\" | \"row speed 300|drag 0.07|shift 15\" | \"oar roll 90|lock x y z|stow x y z turn|rest 30 12|lock on|off\" | \"bob 1\" | \"lamp on|off\" | lakes | \"lakeboats on|off|now|0-10|view 1-10\" | \"lakehere name\" | ripples | \"plankton on|off|night|auto|density 3|size 0.5|open 1800|opensize 1|shore 400\" | \"underwater on|off\" | \"crew add|remove|clear|list|summon\" | \"num [off|reset]\" | bow | \"rock 6\" | calm | \"period 4\" | \"go 150\" | stop | \"turn 20\" | up | down | drive | warp | freeze | \"node on|off\" | \"layer anim|static\" | flip | watch";
 
@@ -6044,6 +9766,8 @@ namespace
 		if (a_w.size() < 2) return a_def;
 		try { return std::stof(a_w[1]); } catch (...) { return a_def; }
 	}
+
+	void OverlayToggle();  // v1.7.86: MenuUi.inl
 
 	void RunRr(const std::string& a_arg)
 	{
@@ -6074,8 +9798,8 @@ namespace
 				return;
 			}
 			if (Wake::NumOn()) Wake::NumCommand(0);
-			// v1.7.11: oas "num gear": the numpad places the fishing supplies and the bedroll (the crew tuning off meanwhile)
-			if (arg == "gear" || arg == "items" || arg == "bedroll" || arg == "supplies") {
+			// v1.7.11: oas "num gear": the numpad places the bedroll (the crew tuning off meanwhile)
+			if (arg == "gear" || arg == "items" || arg == "bedroll") {
 				Crew::NumCommand("off");
 				Print("RowRim: " + Gear::NumCommand(true));
 				return;
@@ -6135,6 +9859,20 @@ namespace
 		const std::string& c = w[0];
 		if (c == "status") hull.Status();
 		else if (c.rfind("bedroll", 0) == 0) Print("RowRim: " + Gear::BedrollCommand(c.size() > 7 ? c.substr(7) : (w.size() >= 2 ? w[1] : std::string{})));  // v1.7.11
+		else if (c == "sail" && w.size() >= 3 && w[1] == "headwind") {  // v1.8.34
+			try { hull.SetSailHeadWind(std::stof(w[2])); } catch (...) { Print("RowRim: oas \"sail headwind 0.7\""); }
+		}
+		else if (c == "sail" && w.size() >= 3 && (w[1] == "rock" || w[1] == "heel")) {  // v1.8.27d
+			try { const float v = std::stof(w[2]); hull.SetSailMotion(w[1] == "rock" ? v : -1.0f, w[1] == "heel" ? v : -1.0f); }
+			catch (...) { Print("RowRim: oas \"sail rock 2.5\" | \"sail heel 1.5\""); }
+		}
+		else if (c == "sail" && w.size() >= 3 && (w[1] == "speed" || w[1] == "flap")) {  // v1.7.91
+			try { const float v = std::stof(w[2]); hull.SetSailTuning(w[1] == "speed" ? v : -1.0f, w[1] == "flap" ? v : -1.0f); }
+			catch (...) { Print("RowRim: oas \"sail speed 0.5\" | \"sail flap 0.6\""); }
+		}
+		else if (c == "sail") Print("RowRim: " + hull.SailCommand(w.size() >= 2 ? w[1] : std::string{}));  // v1.7.73
+		else if (c == "menu" || c == "ui") OverlayToggle();  // v1.7.84
+		else if (c == "model" || c == "modelsail" || c == "modelrow") hull.SetModel(c.size() > 5 ? c.substr(5) : (w.size() >= 2 ? w[1] : std::string{}));  // v1.7.87
 		else if (c == "reset" || c == "resetsettings") {
 			// v1.7.8 (OAS 56.45): rowing speed, glide and turning, boat height and paint, docks on, 3 NPC boats a lake
 			hull.ResetSettings();
@@ -6151,10 +9889,38 @@ namespace
 					break;
 				}
 			}
-			Print("RowRim: " + hull.DockCommand(args));
+			Print("RowRim: " + TestHull::Of(TestHull::kKindRow).DockCommand(args));  // v1.8.26: the docks keep the rowboat
+		}
+		else if (c == "home") {
+			// v1.8.47: oas "home here <boat>" | "home reset <boat>" | "home" (each boat's own dock; no boat named: the one in use)
+			const std::string v = w.size() >= 2 ? w[1] : std::string{};
+			const int named = w.size() >= 3 ? TestHull::KindFromName(w[2]) : -1;
+			auto& b = named >= 0 ? TestHull::Of(named) : TestHull::Get();
+			if (v == "here") Print("RowRim: " + b.HomeHere());
+			else if (v == "perm") Print("RowRim: " + b.HomeHere(true));  // v1.8.88
+			else if (v == "reset") Print("RowRim: " + b.HomeReset(false));
+			else if (v == "resetall") Print("RowRim: " + b.HomeReset(true));  // v1.8.50
+			else Print(std::format("RowRim: {} | {} | {}  (oas \"home here <boat>\" / \"home reset <boat>\" / \"home resetall <boat>\" / \"home perm <boat>\")", TestHull::Of(TestHull::kKindRow).HomeStatus(),
+				TestHull::Of(TestHull::kKindSail).HomeStatus(), TestHull::kLongshipOn ? TestHull::Of(TestHull::kKindLong).HomeStatus() : std::string("no longship in this build")));
+		}
+		else if ((c == "spawn" || c == "use") && w.size() >= 2 && TestHull::KindFromName(w[1]) >= 0) {  // v1.8.89: the menu's Spawn boat / Use this boat
+			const int k = TestHull::KindFromName(w[1]);
+			if (k != TestHull::kKindRow && !TestHull::SailingOn()) { Print("RowRim: only the rowboat while sailing is off (RowRim.ini [Sail] Enabled=1)"); return; }
+			if (c == "spawn" || !TestHull::Of(k).BoatOut()) {
+				TestHull::SwitchActive(k, "oas spawn");
+				TestHull::Get().Spawn(false);
+			} else TestHull::SwitchActive(k, "oas use");
+			TestHull::HoldActive();
+			Print(std::format("RowRim: the {} is the one in use", TestHull::Get().Dims().label));
 		}
 		else if (c == "spawn" || (c == "boat" && w.size() < 2)) hull.Spawn(false);
+		else if (c == "boat" && w.size() >= 2 && TestHull::KindFromName(w[1]) >= 0) {  // v1.8.8: oas boat row|sail|longship
+			hull.SetKind(w[1]);
+			auto& now = TestHull::Get();  // v1.8.26: that boat (the others stay out)
+			if (!now.BoatOut() && (TestHull::KindFromName(w[1]) == TestHull::kKindRow || TestHull::SailingOn())) now.Spawn(false);
+		}
 		else if (c == "bring") hull.Spawn(true);
+		else if (c == "carry") hull.SetCarry(w.size() >= 2 ? w[1] : std::string{}, w.size() >= 3 ? w[2] : std::string{});  // v1.8.9
 		else if (c == "delete" || c == "unboat") hull.Delete(true);
 		else if (c == "paint") hull.SetPaint(w.size() >= 2 ? w[1] : std::string{});
 		else if (c == "height" || (c == "boat" && w.size() >= 3 && w[1] == "height")) {
@@ -6184,6 +9950,7 @@ namespace
 		else if (c == "graft") hull.SetRegraft(w.size() < 2 || w[1] != "off");
 		else if (c == "late") hull.SetLate(w.size() < 2 || w[1] != "off");
 		else if (c == "nudge") hull.SetNudge(w.size() < 2 || w[1] != "off");
+		else if (c == "glide") hull.SetGlide(w.size() < 2 || w[1] != "off");
 		else if (c == "wb") {
 			if (w.size() >= 3 && w[1] == "z") { try { hull.SetWaterBlockZ(std::stof(w[2])); } catch (...) { Print("RowRim: oas \"wb z 4\""); } }
 			else if (w.size() >= 2 && w[1] == "floor") hull.SetFloor(w.size() < 3 || w[2] != "off");
@@ -6215,6 +9982,7 @@ namespace
 				else if (w.size() >= 3 && w[1] == "drag") hull.SetRowDrag(std::stof(w[2]));
 				else if (w.size() >= 3 && w[1] == "shift") hull.SetRowShift(std::stof(w[2]));
 				else if (w.size() >= 3 && w[1] == "turn") hull.SetRowTurn(std::stof(w[2]));  // v1.7.8
+				else if (w.size() >= 3 && w[1] == "lag") hull.SetTurnLag(std::stof(w[2]));  // v1.7.97
 				else Print("RowRim: oas \"row speed 300\" | \"row drag 0.07\" | \"row shift 15\" (rower toward the bow while rowing)");
 			} catch (...) { Print("RowRim: oas \"row speed 300\" or oas \"row drag 0.07\""); }
 		}
@@ -6250,6 +10018,8 @@ namespace
 		RunRr(arg);
 		return true;
 	}
+
+#include "MenuUi.inl"  // v1.7.86: the settings page in SKSE Menu Framework
 
 	static RE::SCRIPT_PARAMETER kRrParams[] = {
 		{ "arg", RE::SCRIPT_PARAM_TYPE::kChar, true }
@@ -6295,28 +10065,35 @@ namespace
 			PickActivateHook::Install();      // v1.7.9
 			FirstPersonStateUpdateHook::Install();
 			ThirdPersonStateUpdateHook::Install();
+			ThirdPersonStateTranslationHook::Install();  // v1.8.58: (was never installed) the helm camera place
+			ThirdPersonStateRotationHook::Install();  // v1.8.58: its turn
 			RegisterConsoleCommand();
+			MenuUi::Register();  // v1.7.86
 			if (auto* mgr = RE::BSInputDeviceManager::GetSingleton()) mgr->AddEventSink(InputSink::Get());
 			if (auto* ui = RE::UI::GetSingleton()) ui->AddEventSink<RE::MenuOpenCloseEvent>(MenuSink::Get());  // v1.7.42
 			logger::info("RowRim ready ({})", kVersion);
 			break;
 		case SKSE::MessagingInterface::kPreLoadGame:
-			TestHull::Get().Forget();  // then the co-save load (if any) hands the saved hull and carrier back
+			for (int k = 0; k < TestHull::kKindCount; ++k) TestHull::Of(k).Forget();  // then the co-save load (if any) hands the saved hulls and carriers back
 			LakeBoats::OnGameLoading();
 			Plankton::Flow::Clear();  // v1.7.8
 			break;
 		case SKSE::MessagingInterface::kNewGame:
-			TestHull::Get().Forget();
+			for (int k = 0; k < TestHull::kKindCount; ++k) TestHull::Of(k).Forget();
 			LakeBoats::OnGameLoading();
 			Plankton::Flow::Clear();
 			Legacy::OnGameLoaded();  // v1.7.8
 			break;
 		case SKSE::MessagingInterface::kSaveGame:
 			TestHull::Get().StandFor("saving the game");  // v1.7.42
-			TestHull::Get().UntameAll("saving the game");  // v1.7.52: never saved unaggressive (calmed again half a second later)
+			for (int k = 0; k < TestHull::kKindCount; ++k) TestHull::Of(k).UntameAll("saving the game");  // v1.7.52: never saved unaggressive (calmed again half a second later)
+			break;
+		case SKSE::MessagingInterface::kPostPostLoad:
+			SmoothCamLink::Ask();  // v1.8.61
 			break;
 		case SKSE::MessagingInterface::kPostLoadGame:
 			Legacy::OnGameLoaded();  // v1.7.8: the old-boat sweep starts a few seconds in; the OarsAndSails.dll warning
+			TestHull::s_saveSweepIn = 4.0f;  // v1.8.66: the whole save's strays, a few seconds in
 			break;
 		default:
 			break;
@@ -6330,7 +10107,7 @@ namespace
 
 	void SaveAll(SKSE::SerializationInterface* a_i)
 	{
-		TestHull::Get().Save(a_i);
+		for (int k = 0; k < TestHull::kKindCount; ++k) TestHull::Of(k).Save(a_i);  // v1.8.26: every boat out
 		Crew::Save(a_i);  // v1.6.0
 		Gear::Save(a_i);  // v1.7.0
 		const std::string lakes = LakeBoats::SaveState();
@@ -6383,7 +10160,7 @@ namespace
 			} else if (Crew::LoadRecord(a_i, type)) {
 				// v1.6.0
 			} else {
-				TestHull::Get().LoadRecord(a_i, type, version);
+				TestHull::LoadRecordAll(a_i, type, version);
 			}
 		}
 	}
@@ -6439,11 +10216,12 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 		ser->SetRevertCallback([](SKSE::SerializationInterface*) {
 			Crew::Forget();  // v1.6.0: first, so the stand-up below touches no passenger
 			Gear::Forget();  // v1.7.0
-			TestHull::Get().Forget();
+			for (int k = 0; k < TestHull::kKindCount; ++k) TestHull::Of(k).Forget();  // v1.8.26
 			LakeBoats::OnGameLoading();
 		});
 	}
 	SKSE::GetMessagingInterface()->RegisterListener(OnMessage);
+	SKSE::GetMessagingInterface()->RegisterListener("SmoothCam", SmoothCamLink::OnMsg);  // v1.8.61
 	return true;
 }
 

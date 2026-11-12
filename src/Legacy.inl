@@ -51,6 +51,8 @@ namespace Legacy
 	{
 		const auto* file = a_base ? a_base->GetFile(0) : nullptr;
 		if (!file) return false;
+		// v1.8.8: the sailing boat's and the longship's own hulls (OAS_SailBoatHull 0x804, OAS_LongshipHull 0x805) are RowRim's
+		if (const auto lid = a_base->GetLocalFormID(); lid >= 0x804) return false;  // v1.8.68d: and everything after (0x806+: our races, carriers, rowboat hull, bedroll)
 		const std::string_view n = file->GetFilename();
 		constexpr std::string_view want = "oarsandsails.esl";
 		return n.size() == want.size() && std::equal(n.begin(), n.end(), want.begin(), [](char a, char b) { return std::tolower(static_cast<unsigned char>(a)) == b; });

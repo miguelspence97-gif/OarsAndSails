@@ -87,6 +87,19 @@ robocopy "Data" "%OAS%" /E /XO /NFL /NDL /NJH /NJS /NP /XD RowRimRowing /XF FNIS
 if exist "release\OarsAndSails.esl" copy /Y "release\OarsAndSails.esl" "%OAS%\" >nul
 echo Also deployed to %OAS% (the Default profile's mod)
 :oasdone
+rem v1.8.55: the Elysium Remastered list (Skyrim 1.5.97) gets the same release layout in its Oars and Sails mod
+set "ELY=E:\Modlists\ElysiumRemastered\mods\Oars and Sails"
+if not exist "%ELY%" goto :elydone
+if not exist "%ELY%\SKSE\Plugins" mkdir "%ELY%\SKSE\Plugins"
+copy /Y "%OUT%\RowRim.dll" "%ELY%\SKSE\Plugins\OarsAndSails.dll" >nul
+if errorlevel 1 (
+  echo Could not copy the DLL to Elysium. Is Skyrim still running?
+  goto :fail
+)
+robocopy "Data" "%ELY%" /E /XO /NFL /NDL /NJH /NJS /NP /XD RowRimRowing /XF FNIS_RowRimRowing_Behavior.hkx RowRim.esl >nul
+if exist "release\OarsAndSails.esl" copy /Y "release\OarsAndSails.esl" "%ELY%\" >nul
+echo Also deployed to %ELY% (Elysium)
+:elydone
 
 echo.
 echo BUILD OK

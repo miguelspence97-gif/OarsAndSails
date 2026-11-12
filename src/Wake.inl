@@ -50,7 +50,7 @@ namespace Wake
 		const auto ini = Plankton::IniPath();
 		auto f = [&](const char* a_k, float a_def) {
 			char b[32]{};
-			GetPrivateProfileStringA("Wake", a_k, "", b, sizeof(b), ini.c_str());
+			GetPrivateProfileStringA(RowRimBakedIni::BoatSec("Wake"), a_k, "", b, sizeof(b), ini.c_str());  // v1.8.26: each boat its own
 			try { return b[0] ? std::stof(b) : a_def; } catch (...) { return a_def; }
 		};
 		g_stern.y = f("SternY", g_stern.y);
@@ -62,7 +62,7 @@ namespace Wake
 	inline void SaveStern()
 	{
 		const auto ini = Plankton::IniPath();
-		auto w = [&](const char* a_k, float a_v) { WritePrivateProfileStringA("Wake", a_k, std::format("{:.2f}", a_v).c_str(), ini.c_str()); };
+		auto w = [&](const char* a_k, float a_v) { WritePrivateProfileStringA(RowRimBakedIni::BoatSec("Wake"), a_k, std::format("{:.2f}", a_v).c_str(), ini.c_str()); };
 		w("SternY", g_stern.y);
 		w("SternSpread", g_stern.spread);
 		w("SternZ", g_stern.z);
@@ -89,7 +89,7 @@ namespace Wake
 		const auto ini = Plankton::IniPath();
 		auto f = [&](const char* a_k, float a_def) {
 			char b[32]{};
-			GetPrivateProfileStringA("Wake", a_k, "", b, sizeof(b), ini.c_str());
+			GetPrivateProfileStringA(RowRimBakedIni::BoatSec("Wake"), a_k, "", b, sizeof(b), ini.c_str());  // v1.8.26: each boat its own
 			try { return b[0] ? std::stof(b) : a_def; } catch (...) { return a_def; }
 		};
 		g_hull.size = f("HullSize", g_hull.size);
@@ -103,7 +103,7 @@ namespace Wake
 	inline void SaveHull()
 	{
 		const auto ini = Plankton::IniPath();
-		auto w = [&](const char* a_k, const std::string& a_v) { WritePrivateProfileStringA("Wake", a_k, a_v.c_str(), ini.c_str()); };
+		auto w = [&](const char* a_k, const std::string& a_v) { WritePrivateProfileStringA(RowRimBakedIni::BoatSec("Wake"), a_k, a_v.c_str(), ini.c_str()); };
 		w("HullSize", std::format("{:.2f}", g_hull.size));
 		w("HullOut", std::format("{:.1f}", g_hull.out));
 		w("HullEvery", std::format("{:.0f}", g_hull.every));

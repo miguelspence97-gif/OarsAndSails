@@ -1,26 +1,49 @@
+# RowRim: the repo is source code only. Meshes, textures, animations and plugins ship in the Nexus zip, not here.
+
+# build output and local tooling
 build/
 dist/
+release/
+backup/
+*.pdb
+*.bak
+*.zip
+/OarsAndSails.ini
+
+# local folders: asset sources, scratch, notes
 nifs/
 blender/
-*.pdb
-OarsAndSails.ini
-# v1.7.40: source images and textures the release does not use
+other textures/
+Queen Ans revenge/
+New folder/
+New folder (2)/
+
+# game assets (the PolyCrate sailing boat is licensed for Oars and Sails only: never commit its source or converted files)
+Data/meshes/
+Data/textures/
+Data/**/*.nif
+Data/**/*.dds
+Data/**/*.hkx
+Data/**/*.esl
+Data/**/*.esp
+Data/**/*.esm
+Data/**/*.bsa
+*.nif
+*.dds
+*.hkx
+*.blend
+*.blend1
+*.fbx
+*.obj
+*.mtl
 *.jpg
 *.png
-Data/textures/RowRim/boat_tent_d.dds
-Data/textures/RowRim/boat_tent_n.dds
-Data/textures/RowRim/boat_tentpole_d.dds
-Data/textures/RowRim/boat_canvas_d.dds
-Data/textures/RowRim/boat_canvas_n.dds
-Data/textures/RowRim/boat_bench_d.dds
-Data/textures/RowRim/fishbone_d.dds
-# the hull is built on the vanilla rowboat mesh: shipped in the Nexus zip, not in the repo
-Data/meshes/RowRim/RowRim_Hull.nif
-# v1.7.55: the v1.7.48 sleeping bag (replaced by the camp bed), and backups
-Data/textures/RowRim/boat_sleepingbag_d.dds
-Data/textures/RowRim/boat_sleepingbag_n.dds
-*.bak
+*.psd
 
-# local notes and secrets (never commit)
-New folder/
+# dev notes: change briefs, backlog and rules stay local
+src/*.md
+src/md/
+RULES.md
+
+# secrets
 *token*

@@ -39,6 +39,8 @@ namespace Fx
 
 	inline void Ripple(const RE::NiPoint3& a_pos, float a_scale)
 	{
+		// v1.8.15: on the OceanRim sea every ripple (oar catches, the blade's trail, the hull's own) is also a real splash
+		SeaLink::Splash(a_pos.x, a_pos.y, a_pos.z, 5.0f + 80.0f * a_scale, 35.0f * a_scale, 0);  // v1.8.16: half the size (smaller rings also die out sooner)
 		if (!g_on) return;
 		auto* water = RE::TESWaterSystem::GetSingleton();
 		if (!water) return;
@@ -205,6 +207,18 @@ namespace LakeBoats
 		constexpr RE::FormID kHullStatic = 0x00050368;  // ShipRowBoat01: the hull ref our model hangs on
 		constexpr RE::FormID kLampStatic = 0x0002D847;  // CandleLanternwithCandle01 (OAS stern lamp)
 		constexpr RE::FormID kLampLight = 0x0001CBB3;   // OAS lamp light (warm, radius 300)
+		// v1.8.69: our own copies in OarsAndSails.esl are what is placed (gone with the esl; RULES: never borrow vanilla);
+		// the vanilla ids above stay for finding what older versions placed
+		constexpr RE::FormID kOwnHull = 0x80A, kOwnLamp = 0x80C, kOwnLight = 0x80D;
+		inline RE::TESBoundObject* Own(RE::FormID a_local, RE::FormID a_vanilla)
+		{
+			auto* dh = RE::TESDataHandler::GetSingleton();
+			if (auto* f = dh ? dh->LookupForm(a_local, "OarsAndSails.esl") : nullptr) if (auto* b = f->As<RE::TESBoundObject>()) return b;
+			return RE::TESForm::LookupByID<RE::TESBoundObject>(a_vanilla);
+		}
+		inline RE::TESBoundObject* HullBase() { return Own(kOwnHull, kHullStatic); }
+		inline RE::TESBoundObject* LampBase() { return Own(kOwnLamp, kLampStatic); }
+		inline RE::TESBoundObject* LightBase() { return Own(kOwnLight, kLampLight); }
 		constexpr const char* kHullModel = "RowRim\\RowRim_Hull.nif";
 		constexpr float kOriginBelowWater = 32.0f;      // the player's boat: kWaterZ -32
 		const RE::NiPoint3 kRowerSeat{ 0.0f, 15.0f, 33.0f };   // v1.4.0: the oar thwart where the clip sits (TestHull rowSeat_), facing the stern
@@ -290,6 +304,7 @@ namespace LakeBoats
 			const void* visualOn = nullptr;  // the hull 3D the model hangs on (a reload gets a new one)
 			OarSet oars;
 			float time = 0.0f, refTimer = 0.0f, rayTimer = 0.0f, blockLog = 0.0f;
+			mutable SeaLink::State sea;  // v1.8.11: its answer to the OceanRim sea
 			float seed = 0.0f;     // v1.3.1: this boat's own phase for the idle rock (was taken from its position: it jumped as it moved)
 			float turnVel = 0.0f;  // v1.3.1: the turn rate, eased like the player's (was a hard clamp: jerky)
 			float lean = 0.0f;     // v1.3.1: the player's turn lean
@@ -685,6 +700,30 @@ namespace LakeBoats
 			g_npcsPicked = true;
 			auto* dh = RE::TESDataHandler::GetSingleton();
 			if (!dh) return;
+			// v1.8.69: our own crew (OarsAndSails.esl 0x810-0x821, RowRimLakeCrew<race><sex>: templated on the game's commoners,
+			// their faces and outfits from them): gone with the esl. The game's own townsfolk only if the esl is old.
+			{
+				std::size_t own = 0;
+				for (RE::FormID lid = 0x810; lid <= 0x82F; ++lid) {
+					auto* f = dh->LookupForm(lid, "OarsAndSails.esl");
+					auto* npc = f ? f->As<RE::TESNPC>() : nullptr;
+					if (!npc) continue;
+					const int r = RaceIndex(npc);
+					if (r < 0) continue;
+					g_byRace[r].push_back(npc);
+					g_crewBases.push_back(npc->GetFormID());
+					++own;
+				}
+				if (own) {
+					for (auto* npc : dh->GetFormArray<RE::TESNPC>())  // the fishing outfits still come from the game's fishers
+						if (npc && !npc->IsUnique() && IsRealFisher(npc)) {
+							std::vector<RE::TESObjectARMO*> gear;
+							if (OutfitPieces(npc->defaultOutfit, gear, false)) g_fishGear.push_back(std::move(gear));
+						}
+					logger::info("Lake: {} crew bases of our own (OarsAndSails.esl), {} fishing outfit(s)", own, g_fishGear.size());
+					return;
+				}
+			}
 			static constexpr const char* kNot[] = { "guard", "soldier", "bandit", "mage", "necromancer", "conjurer", "warlock", "wizard", "sorcer", "witch",
 				"vampire", "thalmor", "forsworn", "cultist", "thief", "assassin", "smuggler", "mercenary", "warrior", "prisoner", "stormcloak", "legion",
 				"ghost", "dead", "dremora", "skeleton", "hunter", "adventurer", "hired thug", "jarl", "steward", "housecarl",
@@ -940,8 +979,12 @@ namespace LakeBoats
 			const float roll = 0.019f * (0.68f * std::sin(t * 1.19f) + 0.32f * std::sin(t * 2.31f + 0.9f));
 			const float pitch = 0.010f * (0.64f * std::sin(t * 1.67f + 1.7f) + 0.36f * std::sin(t * 0.83f + 0.4f));
 			const float heave = 2.4f * (0.7f * std::sin(t * 1.43f + 0.3f) + 0.3f * std::sin(t * 2.7f + 2.1f));
-			a_rot = RzM(a_b.yaw) * (RxM(pitch) * RyM(roll + a_b.lean));
-			a_at = RE::NiPoint3{ a_b.x, a_b.y, a_lake.water - kOriginBelowWater + heave };
+			float seaH = 0.0f, seaP = 0.0f, seaR = 0.0f;  // v1.8.10: the OceanRim sea, on the sea only (lakes stay flat)
+			if (!a_lake.sea || !SeaLink::Motion(a_b.x, a_b.y, a_lake.water, a_b.yaw, 240.0f, 85.0f, seaH, seaP, seaR)) seaH = seaP = seaR = 0.0f;
+			SeaLink::Step(a_b.sea, seaH, seaP, seaR, a_b.time - a_b.sea.last, 1.0f);  // v1.8.11
+			a_b.sea.last = a_b.time;
+			a_rot = RzM(a_b.yaw) * (RxM(pitch + a_b.sea.p) * RyM(roll + a_b.lean + a_b.sea.r));
+			a_at = RE::NiPoint3{ a_b.x, a_b.y, a_lake.water - kOriginBelowWater + heave + a_b.sea.h };
 		}
 
 		void PlaceAbs(RE::NiAVObject* a_node, const RE::NiPoint3& a_pos, const RE::NiMatrix3& a_rot, float a_scale)
@@ -1025,7 +1068,7 @@ namespace LakeBoats
 			Pose(a_b, a_lake, at, rot);
 			auto* anchor = AnchorAt(at);
 			if (!anchor) return false;
-			auto* hull = PlaceAt(anchor, RE::TESForm::LookupByID<RE::TESBoundObject>(kHullStatic), "hull", a_b.hull);
+			auto* hull = PlaceAt(anchor, HullBase(), "hull", a_b.hull);
 			if (!hull) return false;
 			hull->SetPosition(at);
 			hull->SetAngle(RE::NiPoint3{ 0.0f, 0.0f, a_b.yaw });
@@ -1548,6 +1591,7 @@ namespace LakeBoats
 			RE::NiPoint3 at;
 			RE::NiMatrix3 rot;
 			Pose(a_b, a_lake, at, rot);
+			if (a_lake.sea) SeaLink::Hull(static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(&a_b)) | 2u, a_b.x, a_b.y, a_b.yaw, 300.0f, 85.0f, at.z + kOriginBelowWater);  // v1.8.10
 			// v1.3.1: the refs carry the boat's spot in their data (as the player's hull ref does); SetPosition (which also
 			// set their 3D to an unrocked, old-heading pose twice a second: the jumps) only when the boat enters another cell
 			for (auto* h : Refs(a_b)) {
@@ -1581,8 +1625,8 @@ namespace LakeBoats
 
 			const bool night = Night();
 			if (night && !a_b.lantern) {
-				PlaceAt(hull.get(), RE::TESForm::LookupByID<RE::TESBoundObject>(kLampStatic), "lantern", a_b.lantern);
-				PlaceAt(hull.get(), RE::TESForm::LookupByID<RE::TESBoundObject>(kLampLight), "light", a_b.light);
+				PlaceAt(hull.get(), LampBase(), "lantern", a_b.lantern);
+				PlaceAt(hull.get(), LightBase(), "light", a_b.light);
 			} else if (!night && a_b.lantern) {
 				DeleteRef(a_b.lantern);
 				DeleteRef(a_b.light);
@@ -1770,6 +1814,7 @@ namespace LakeBoats
 			if (!base) return false;
 			const RE::FormID b = base->GetFormID();
 			if (b == kHullStatic || b == kLampStatic || b == kLampLight) return true;
+			if (base == HullBase() || base == LampBase() || base == LightBase()) return true;  // v1.8.69
 			if (!a_ref->As<RE::Actor>()) return false;
 			const char* nm = a_ref->GetDisplayFullName();
 			const std::string_view n(nm ? nm : "");
@@ -2230,8 +2275,10 @@ namespace LakeBoats
 		auto* player = RE::PlayerCharacter::GetSingleton();
 		auto* tes = RE::TES::GetSingleton();
 		if (!player || !tes) return;
-		auto* lightBase = RE::TESForm::LookupByID<RE::TESBoundObject>(kLampLight);
-		auto* lampBase = RE::TESForm::LookupByID<RE::TESBoundObject>(kLampStatic);
+		auto* lightBase = LightBase();  // v1.8.69: ours
+		auto* lampBase = LampBase();
+		auto* oldLight = RE::TESForm::LookupByID<RE::TESBoundObject>(kLampLight);  // and what older versions placed
+		auto* oldLamp = RE::TESForm::LookupByID<RE::TESBoundObject>(kLampStatic);
 		std::unordered_set<RE::FormID> held;
 		if (a_keep) held.insert(a_keep);
 		for (auto& lake : g_lakes)
@@ -2242,18 +2289,21 @@ namespace LakeBoats
 		tes->ForEachReferenceInRange(player, 12000.0f, [&](RE::TESObjectREFR* a_ref) {
 			if (!a_ref || (a_ref->GetFormID() >> 24) != 0xFF || a_ref->IsDeleted() || a_ref->IsDisabled()) return RE::BSContainer::ForEachResult::kContinue;
 			auto* base = a_ref->GetBaseObject();
-			if (!base || (base != lightBase && base != lampBase) || held.contains(a_ref->GetFormID())) return RE::BSContainer::ForEachResult::kContinue;
+			if (!base || (base != lightBase && base != lampBase && base != oldLight && base != oldLamp) || held.contains(a_ref->GetFormID())) return RE::BSContainer::ForEachResult::kContinue;
 			const RE::NiPoint3 p = a_ref->GetPosition();
 			bool overWater = false;
 			if (auto* c = a_ref->GetParentCell(); c && c->IsExteriorCell()) {
 				float w = 0.0f;
 				overWater = c->GetWaterHeight(p, w) && std::isfinite(w) && std::abs(w) < 1000000.0f && std::abs(p.z - w) < 400.0f;
+				// v1.8.0: and real open water under it (a cell's water height is not water: Whiterun's stairs sit below theirs)
+				float land = 0.0f;
+				if (overWater && (!tes->GetLandHeight(p, land) || !std::isfinite(land) || w - land < 60.0f)) overWater = false;
 			}
 			if (!overWater) return RE::BSContainer::ForEachResult::kContinue;  // not ours (a lamp some mod placed on land)
 			a_ref->Disable();
 			a_ref->SetDelete(true);
 			++n;
-			logger::info("Lake: stray {} {:08X} over the water removed", base == lightBase ? "lamp light" : "lantern", a_ref->GetFormID());
+			logger::info("Lake: stray {} {:08X} over the water removed", base == lightBase || base == oldLight ? "lamp light" : "lantern", a_ref->GetFormID());
 			return RE::BSContainer::ForEachResult::kContinue;
 		});
 		if (n) logger::info("Lake: {} stray lamp part(s) swept", n);
